@@ -1,5 +1,6 @@
 """
 Scheduler - Cron interno para Railway
+v2: agrega screener (1x/día 10:00), backtesting (lunes 08:00), portfolio (diario 09:30)
 """
 
 import logging
@@ -9,7 +10,7 @@ from datetime import datetime, timezone
 
 import schedule
 
-from main import run_cycle, run_heartbeat
+from main import run_cycle, run_heartbeat, run_screener, run_backtesting, run_portfolio
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,31 +20,45 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def safe_run_cycle():
-    try:
-        run_cycle()
-    except Exception as e:
-        logger.exception(f"Error no capturado en ciclo: {e}")
+def safe(fn, name: str):
+    """Wrapper de error para cualquier job."""
+    def wrapper():
         try:
-            from telegram_bot import TelegramBot
-            TelegramBot().send_error("scheduler", str(e))
-        except Exception:
-            pass
-
-
-def safe_heartbeat():
-    try:
-        run_heartbeat()
-    except Exception as e:
-        logger.exception(f"Error en heartbeat: {e}")
+            fn()
+        except Exception as e:
+            logger.exception(f"Error no capturado en {name}: {e}")
+            try:
+                from telegram_bot import TelegramBot
+                TelegramBot().send_error(name, str(e))
+            except Exception:
+                pass
+    return wrapper
 
 
 def main():
-    logger.info("Agente de Inversion iniciado")
-    logger.info("Ciclo: cada 15 minutos | Heartbeat: 09:00 UTC diario")
-    schedule.every(15).minutes.do(safe_run_cycle)
-    schedule.every().day.at("09:00").do(safe_heartbeat)
-    safe_run_cycle()
+    logger.info("Agente de Inversion v2 iniciado")
+    logger.info(
+        "Jobs: ciclo cada 15min | heartbeat 09:00 | portfolio 09:30 | screener 10:00 | backtesting lunes 08:30"
+    )
+
+    # Análisis técnico cada 15 minutos
+    schedule.every(15).minutes.do(safe(run_cycle, "ciclo"))
+
+    # Resumen diario completo (Fear&Greed + dólar + noticias + SEC filings)
+    schedule.every().day.at("09:00").do(safe(run_heartbeat, "heartbeat"))
+
+    # Portfolio P&L (diario, después del resumen)
+    schedule.every().day.at("09:30").do(safe(run_portfolio, "portfolio"))
+
+    # Screener de oportunidades (diario al medio día NY)
+    schedule.every().day.at("14:00").do(safe(run_screener, "screener"))
+
+    # Backtesting (lunes a las 08:30 UTC)
+    schedule.every().monday.at("08:30").do(safe(run_backtesting, "backtesting"))
+
+    # Ejecutar ciclo inicial al arrancar
+    safe(run_cycle, "ciclo_inicial")()
+
     while True:
         schedule.run_pending()
         time.sleep(30)

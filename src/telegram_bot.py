@@ -1,5 +1,6 @@
 """
 Telegram Bot - Alertas de inversion
+v2: agrega formatters para resumen diario, noticias, screener, SEC, portfolio, backtesting, dólar
 """
 
 import os
@@ -124,3 +125,138 @@ class TelegramBot:
             f"\U0001f550 {datetime.utcnow().strftime('%H:%M UTC')}"
         )
         return self._send(msg)
+
+    # ─── Nuevos formatters v2 ─────────────────────────────────────────────
+
+    def send_daily_summary(
+        self,
+        cedears_count: int,
+        cryptos_count: int,
+        fg_msg: str = "",
+        dollar_msg: str = "",
+        commentary: str = "",
+        top_signals: list = None,
+        news_preview: list = None,
+    ) -> bool:
+        """Resumen matutino completo a las 9hs."""
+        now_str = datetime.utcnow().strftime("%d/%m/%Y")
+        lines = [
+            f"🌅 <b>RESUMEN DIARIO — {now_str}</b>",
+            f"━━━━━━━━━━━━━━━━━━━━",
+        ]
+
+        if commentary:
+            lines.append(f"\n📝 {commentary}")
+
+        if fg_msg:
+            lines.append(f"\n{fg_msg}")
+
+        if dollar_msg:
+            lines.append(f"\n{dollar_msg}")
+
+        lines.append(f"\n📊 Monitoreando: {cedears_count} CEDEARs | {cryptos_count} Cryptos")
+
+        if top_signals:
+            lines.append("\n🔔 <b>Señales del ciclo:</b>")
+            for sig in top_signals[:3]:
+                emoji = self._emoji_senal(sig.senal, sig.fuerza)
+                lines.append(f"  {emoji} {sig.ticker}: {sig.senal} {sig.fuerza}")
+
+        if news_preview:
+            lines.append("\n📰 <b>Noticias destacadas:</b>")
+            for n in news_preview[:3]:
+                title = n.get("title", "")[:80]
+                ticker = n.get("ticker", "")
+                lines.append(f"  [{ticker}] {title}")
+
+        lines.append(f"\n━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"🕘 {datetime.utcnow().strftime('%H:%M UTC')} · <i>Solo informativo</i>")
+
+        return self._send("\n".join(lines))
+
+    def send_news_alert(self, news_items: list[dict], sentiment_data: dict = None) -> bool:
+        """Envía resumen de noticias relevantes con sentimiento."""
+        if not news_items:
+            return False
+
+        lines = [f"📰 <b>NOTICIAS RELEVANTES</b> — {datetime.utcnow().strftime('%H:%M UTC')}\n"]
+
+        market_sentiment = sentiment_data.get("sentimiento_mercado", "") if sentiment_data else ""
+        if market_sentiment:
+            s_emoji = {"POSITIVO": "📈", "NEGATIVO": "📉", "NEUTRO": "📊"}.get(market_sentiment, "📊")
+            lines.append(f"{s_emoji} Sentimiento: <b>{market_sentiment}</b>\n")
+
+        for item in news_items[:8]:
+            ticker = item.get("ticker", "")
+            title = item.get("title", "")[:100]
+            # Sentimiento por ticker si está disponible
+            ticker_sentiment = ""
+            if sentiment_data and "tickers" in sentiment_data:
+                td = sentiment_data["tickers"].get(ticker, {})
+                if td.get("sentiment"):
+                    s_map = {"POSITIVO": "📈", "NEGATIVO": "📉", "NEUTRO": "•"}
+                    ticker_sentiment = f" {s_map.get(td['sentiment'], '')} <i>{td.get('razon', '')}</i>"
+            lines.append(f"[<b>{ticker}</b>] {title}{ticker_sentiment}")
+
+        return self._send("\n".join(lines))
+
+    def send_screener_results(self, results: list) -> bool:
+        """Envía resultados del screener de oportunidades."""
+        if not results:
+            return False
+
+        lines = [
+            f"🔍 <b>SCREENER — Candidatos de entrada</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        ]
+
+        for r in results[:8]:
+            rsi_str = f"RSI: {r.rsi}" if r.rsi else ""
+            var_str = f"{r.variacion_pct:+.1f}%" if r.variacion_pct else ""
+            score_str = f"Score: {r.score_oportunidad}"
+            lines.append(
+                f"\n🎯 <b>{r.ticker}</b> — ${r.precio:,.2f} ({var_str})\n"
+                f"   {rsi_str} · {score_str}\n"
+                f"   <i>{r.razon}</i>"
+            )
+
+        lines.append(f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <i>Solo informativo. No es asesoramiento financiero.</i>")
+        return self._send("\n".join(lines))
+
+    def send_sec_filings(self, filings: list[dict]) -> bool:
+        """Envía alertas de nuevos filings SEC."""
+        if not filings:
+            return False
+
+        lines = [f"📋 <b>FILINGS SEC — Últimos 7 días</b>\n"]
+
+        for f in filings[:10]:
+            ticker = f.get("ticker", "")
+            form = f.get("form", "")
+            date = f.get("date", "")
+            desc = f.get("description", form)
+            url = f.get("url", "")
+            lines.append(f"{desc} <b>{ticker}</b> ({form}) — {date}")
+            if url:
+                lines.append(f"  <a href='{url}'>Ver en EDGAR →</a>")
+
+        return self._send("\n".join(lines))
+
+    def send_portfolio(self, portfolio_msg: str) -> bool:
+        """Envía resumen del portfolio."""
+        return self._send(portfolio_msg)
+
+    def send_backtesting(self, backtest_msg: str) -> bool:
+        """Envía estadísticas de backtesting."""
+        return self._send(backtest_msg)
+
+    def send_dollar_alert(self, dollar_msg: str, correlation_alerts: list[str]) -> bool:
+        """Envía alerta de tipo de cambio y correlación CEDEAR."""
+        if not dollar_msg and not correlation_alerts:
+            return False
+        lines = [dollar_msg] if dollar_msg else []
+        if correlation_alerts:
+            lines.append("\n<b>Correlación dólar-CEDEAR:</b>")
+            for alert in correlation_alerts:
+                lines.append(f"  {alert}")
+        return self._send("\n".join(lines))

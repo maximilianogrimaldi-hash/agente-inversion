@@ -1,11 +1,11 @@
 """
-Supabase Client - Watchlist e historial de alertas
+SupabaseClient — Conexión a Supabase REST API
+v2: agrega get_recent_alerts, get_portfolio, upsert_portfolio
 """
 
 import os
 import logging
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone, timedelta
 
 import requests
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class SupabaseClient:
     def __init__(self):
         self.url = os.environ["SUPABASE_URL"].rstrip("/")
-        self.key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_ANON_KEY"]
+        self.key = os.environ["SUPABASE_KEY"]
         self.headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
@@ -23,119 +23,124 @@ class SupabaseClient:
             "Prefer": "return=representation",
         }
 
-    def _rest(self, method: str, table: str, data: dict = None, params: dict = None) -> list | dict:
-        url = f"{self.url}/rest/v1/{table}"
-        resp = requests.request(
-            method, url, headers=self.headers, json=data, params=params, timeout=10
-        )
-        resp.raise_for_status()
-        return resp.json() if resp.text else []
+    def _get(self, table: str, params: dict = None) -> list:
+        try:
+            resp = requests.get(
+                f"{self.url}/rest/v1/{table}",
+                headers=self.headers,
+                params=params or {},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            logger.error(f"Supabase GET {table}: {e}")
+            return []
+
+    def _post(self, table: str, data: dict) -> dict | None:
+        try:
+            resp = requests.post(
+                f"{self.url}/rest/v1/{table}",
+                headers=self.headers,
+                json=data,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return result[0] if isinstance(result, list) and result else result
+        except Exception as e:
+            logger.error(f"Supabase POST {table}: {e}")
+            return None
+
+    def _upsert(self, table: str, data: dict, on_conflict: str = "id") -> dict | None:
+        try:
+            headers = {**self.headers, "Prefer": f"resolution=merge-duplicates,return=representation"}
+            resp = requests.post(
+                f"{self.url}/rest/v1/{table}",
+                headers=headers,
+                json=data,
+                params={"on_conflict": on_conflict},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return result[0] if isinstance(result, list) and result else result
+        except Exception as e:
+            logger.error(f"Supabase UPSERT {table}: {e}")
+            return None
+
+    # ─── Watchlist ───────────────────────────────────────────────────────────
 
     def get_watchlist(self) -> list[dict]:
-        try:
-            rows = self._rest("GET", "watchlist", params={"activo": "eq.true", "select": "*"})
-            return rows if isinstance(rows, list) else []
-        except Exception as e:
-            logger.error(f"Error obteniendo watchlist: {e}")
-            return []
+        return self._get("watchlist", {"select": "*", "activo": "eq.true"})
 
     def get_cedears(self) -> list[str]:
-        rows = self.get_watchlist()
-        return [r["ticker"] for r in rows if r.get("tipo") == "CEDEAR"]
+        rows = self._get("watchlist", {"select": "ticker", "tipo": "eq.CEDEAR", "activo": "eq.true"})
+        return [r["ticker"] for r in rows]
 
     def get_cryptos(self) -> list[str]:
-        rows = self.get_watchlist()
-        return [r["ticker"] for r in rows if r.get("tipo") == "CRYPTO"]
+        rows = self._get("watchlist", {"select": "ticker", "tipo": "eq.CRYPTO", "activo": "eq.true"})
+        return [r["ticker"] for r in rows]
 
-    def add_to_watchlist(self, ticker: str, tipo: str, notas: str = "") -> bool:
-        try:
-            self._rest("POST", "watchlist", data={
-                "ticker": ticker.upper(),
-                "tipo": tipo.upper(),
-                "notas": notas,
-                "activo": True,
-                "creado_en": datetime.utcnow().isoformat(),
-            })
-            return True
-        except Exception as e:
-            logger.error(f"Error agregando {ticker} a watchlist: {e}")
-            return False
+    # ─── Alertas ─────────────────────────────────────────────────────────────
 
-    def remove_from_watchlist(self, ticker: str) -> bool:
-        try:
-            self._rest("PATCH", "watchlist",
-                       data={"activo": False},
-                       params={"ticker": f"eq.{ticker.upper()}"})
-            return True
-        except Exception as e:
-            logger.error(f"Error removiendo {ticker} de watchlist: {e}")
-            return False
+    def save_alert(self, data: dict) -> dict | None:
+        payload = {
+            "ticker": data.get("ticker"),
+            "tipo": data.get("tipo"),
+            "senal": data.get("senal"),
+            "fuerza": data.get("fuerza"),
+            "precio": data.get("precio"),
+            "variacion_pct": data.get("variacion_pct"),
+            "motivos": data.get("motivos", []),
+            "indicadores": data.get("indicadores", {}),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return self._post("alertas", payload)
 
-    def save_alert(self, signal_dict: dict) -> bool:
-        try:
-            self._rest("POST", "alertas", data={
-                "ticker": signal_dict.get("ticker"),
-                "tipo": signal_dict.get("tipo"),
-                "precio": signal_dict.get("precio"),
-                "variacion_pct": signal_dict.get("variacion_pct"),
-                "senal": signal_dict.get("senal"),
-                "fuerza": signal_dict.get("fuerza"),
-                "motivos": signal_dict.get("motivos", []),
-                "indicadores": signal_dict.get("indicadores", {}),
-                "creado_en": datetime.utcnow().isoformat(),
-            })
-            return True
-        except Exception as e:
-            logger.error(f"Error guardando alerta: {e}")
-            return False
+    def alert_already_sent(self, ticker: str, senal: str, within_minutes: int = 60) -> bool:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=within_minutes)).isoformat()
+        rows = self._get("alertas", {
+            "ticker": f"eq.{ticker}",
+            "senal": f"eq.{senal}",
+            "created_at": f"gte.{cutoff}",
+            "select": "id",
+            "limit": "1",
+        })
+        return len(rows) > 0
 
-    def get_recent_alerts(self, limit: int = 50) -> list[dict]:
-        try:
-            rows = self._rest("GET", "alertas", params={
-                "select": "*",
-                "order": "creado_en.desc",
-                "limit": limit,
-            })
-            return rows if isinstance(rows, list) else []
-        except Exception as e:
-            logger.error(f"Error obteniendo alertas recientes: {e}")
-            return []
+    def get_recent_alerts(self, days_back: int = 30) -> list[dict]:
+        """Retorna alertas de los últimos N días para backtesting."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+        return self._get("alertas", {
+            "select": "*",
+            "created_at": f"gte.{cutoff}",
+            "order": "created_at.desc",
+            "limit": "200",
+        })
 
-    def alert_already_sent(self, ticker: str, senal: str, minutes: int = 60) -> bool:
-        from datetime import timedelta
-        cutoff = (datetime.utcnow() - timedelta(minutes=minutes)).isoformat()
-        try:
-            rows = self._rest("GET", "alertas", params={
-                "ticker": f"eq.{ticker}",
-                "senal": f"eq.{senal}",
-                "creado_en": f"gte.{cutoff}",
-                "select": "id",
-                "limit": 1,
-            })
-            return len(rows) > 0
-        except Exception as e:
-            logger.error(f"Error verificando duplicado: {e}")
-            return False
+    # ─── Config ──────────────────────────────────────────────────────────────
 
-    def get_config(self, key: str, default=None):
-        try:
-            rows = self._rest("GET", "config", params={
-                "key": f"eq.{key}",
-                "select": "value",
-                "limit": 1,
-            })
-            if rows:
-                return rows[0]["value"]
-            return default
-        except Exception as e:
-            logger.error(f"Error obteniendo config {key}: {e}")
-            return default
+    def get_config(self, key: str):
+        rows = self._get("config", {"select": "value", "key": f"eq.{key}"})
+        if rows:
+            return rows[0].get("value")
+        return None
 
-    def set_config(self, key: str, value) -> bool:
-        try:
-            self._rest("POST", "config",
-                       data={"key": key, "value": str(value)})
-            return True
-        except Exception as e:
-            logger.error(f"Error seteando config {key}: {e}")
-            return False
+    # ─── Portfolio ───────────────────────────────────────────────────────────
+
+    def get_portfolio(self) -> list[dict]:
+        """Retorna todas las posiciones del portfolio."""
+        return self._get("portfolio", {"select": "*", "activo": "eq.true"})
+
+    def upsert_portfolio(self, ticker: str, tipo: str, cantidad: float, precio_entrada: float, notas: str = "") -> dict | None:
+        """Agrega o actualiza una posición del portfolio."""
+        return self._upsert("portfolio", {
+            "ticker": ticker,
+            "tipo": tipo,
+            "cantidad": cantidad,
+            "precio_entrada": precio_entrada,
+            "notas": notas,
+            "activo": True,
+            "fecha_entrada": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="ticker")

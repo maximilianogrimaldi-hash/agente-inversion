@@ -1,5 +1,6 @@
 """
 Main — Orquestador del ciclo de analisis
+v2: integra news, screener, fear&greed, sentiment, portfolio, SEC, dólar, backtesting
 """
 
 import logging
@@ -10,6 +11,14 @@ from binance_client import BinanceClient
 from analyzer import Analyzer, Signal
 from telegram_bot import TelegramBot
 from supabase_client import SupabaseClient
+from news_client import NewsClient
+from fear_greed import get_fear_greed, format_fg_message
+from dollar_monitor import get_dollar_rates, format_dollar_message, analyze_dollar_cedear_correlation
+from sentiment import SentimentAnalyzer
+from screener import Screener
+from sec_monitor import SECMonitor
+from backtesting import Backtester
+from portfolio import PortfolioTracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +29,10 @@ logger = logging.getLogger(__name__)
 
 
 def _load_config(db: SupabaseClient) -> dict:
-    keys = ["rsi_oversold", "rsi_overbought", "price_change_alert", "volume_spike_mult", "dedup_minutes"]
+    keys = [
+        "rsi_oversold", "rsi_overbought", "rsi_extreme_oversold", "rsi_extreme_overbought",
+        "price_change_alert", "volume_spike_mult", "dedup_minutes"
+    ]
     config = {}
     for k in keys:
         val = db.get_config(k)
@@ -37,9 +49,11 @@ def run_cycle():
     analyzer = Analyzer(config)
     telegram = TelegramBot()
     signals_to_send: list[Signal] = []
+    current_prices: dict = {}
 
     # --- CEDEARs ---
     cedears = db.get_cedears()
+    iol = None
     if cedears:
         try:
             iol = IOLClient()
@@ -48,6 +62,9 @@ def run_cycle():
                     quote = iol.get_cedear_quote(ticker)
                     history = iol.get_cedear_history(ticker, days=50)
                     sig = analyzer.analyze_cedear(ticker, quote, history)
+                    precio = float(quote.get("ultimoPrecio") or quote.get("precio") or 0)
+                    if precio > 0:
+                        current_prices[ticker] = precio
                     if sig and sig.senal not in ("NEUTRAL",):
                         if db.alert_already_sent(ticker, sig.senal, dedup_minutes):
                             logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")
@@ -63,6 +80,7 @@ def run_cycle():
 
     # --- Crypto ---
     cryptos = db.get_cryptos()
+    binance = None
     if cryptos:
         try:
             binance = BinanceClient()
@@ -71,6 +89,8 @@ def run_cycle():
                     ticker_24h = binance.get_ticker_24h(symbol)
                     klines = binance.get_klines(symbol, interval="15m", limit=50)
                     sig = analyzer.analyze_crypto(symbol, ticker_24h, klines)
+                    if ticker_24h.get("price"):
+                        current_prices[symbol] = ticker_24h["price"]
                     if sig and sig.senal not in ("NEUTRAL",):
                         if db.alert_already_sent(symbol, sig.senal, dedup_minutes):
                             logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")
@@ -88,14 +108,219 @@ def run_cycle():
     fuerza_order = {"FUERTE": 0, "MODERADA": 1, "DEBIL": 2}
     signals_to_send.sort(key=lambda s: fuerza_order.get(s.fuerza, 3))
 
+    # Enviar señales técnicas
     telegram.send_signals_batch(signals_to_send)
+
+    # Noticias (cada ciclo, solo si hay señales o cada hora)
+    _run_news_check(telegram, cedears, cryptos)
+
     logger.info(f"=== Ciclo completado: {len(signals_to_send)} senales enviadas ===")
+    return signals_to_send, current_prices
+
+
+def _run_news_check(telegram: TelegramBot, cedears: list, cryptos: list):
+    """Chequeo de noticias — solo informa si hay algo relevante."""
+    try:
+        news_client = NewsClient()
+        news = news_client.get_watchlist_news(cedears, cryptos, max_per_ticker=2)
+
+        if not news:
+            return
+
+        # Análisis de sentimiento (si hay API key)
+        sentiment_data = {}
+        try:
+            sa = SentimentAnalyzer()
+            sentiment_data = sa.analyze_news_batch(news)
+        except Exception as e:
+            logger.debug(f"Sentiment skip: {e}")
+
+        # Solo enviar si hay noticias con sentimiento negativo fuerte o positivo fuerte
+        if sentiment_data.get("sentimiento_mercado") in ("POSITIVO", "NEGATIVO"):
+            telegram.send_news_alert(news, sentiment_data)
+        elif len(news) >= 3:
+            # De todas formas, cada hora aprox enviar algunas noticias
+            telegram.send_news_alert(news[:5], sentiment_data)
+
+    except Exception as e:
+        logger.error(f"Error en news check: {e}")
 
 
 def run_heartbeat():
+    """Resumen diario completo a las 09:00 UTC."""
+    logger.info("=== Iniciando heartbeat diario ===")
     db = SupabaseClient()
     telegram = TelegramBot()
     cedears = db.get_cedears()
     cryptos = db.get_cryptos()
-    telegram.send_heartbeat(len(cedears), len(cryptos))
-    logger.info("Heartbeat enviado")
+
+    # Fear & Greed
+    fg_data = None
+    fg_msg = ""
+    try:
+        fg_data = get_fear_greed()
+        fg_msg = format_fg_message(fg_data)
+        logger.info(f"Fear & Greed: {fg_data}")
+    except Exception as e:
+        logger.warning(f"Fear & Greed error: {e}")
+
+    # Tipos de cambio
+    dollar_msg = ""
+    dollar_rates = None
+    try:
+        dollar_rates = get_dollar_rates()
+        dollar_msg = format_dollar_message(dollar_rates)
+        logger.info(f"Dólar: {dollar_rates}")
+    except Exception as e:
+        logger.warning(f"Dollar error: {e}")
+
+    # Noticias macro para el resumen
+    news_preview = []
+    sentiment_data = {}
+    try:
+        nc = NewsClient()
+        macro_news = nc.get_macro_news()
+        watchlist_news = nc.get_watchlist_news(cedears[:5], cryptos[:2], max_per_ticker=1)
+        all_news = macro_news + watchlist_news
+        news_preview = all_news[:5]
+
+        sa = SentimentAnalyzer()
+        if all_news:
+            sentiment_data = sa.analyze_news_batch(all_news)
+    except Exception as e:
+        logger.warning(f"News/sentiment error: {e}")
+
+    # Señales recientes (últimas 15 min del ciclo anterior)
+    recent_signals = []
+    try:
+        recent_alerts = db.get_recent_alerts(days_back=1)
+        # Convertir a Signal-like para el formatter
+        class SigProxy:
+            def __init__(self, d):
+                self.ticker = d.get("ticker", "")
+                self.senal = d.get("senal", "")
+                self.fuerza = d.get("fuerza", "")
+        recent_signals = [SigProxy(a) for a in recent_alerts[:5]]
+    except Exception as e:
+        logger.warning(f"Recent signals error: {e}")
+
+    # Comentario de mercado via Claude
+    commentary = ""
+    try:
+        sa = SentimentAnalyzer()
+        commentary = sa.generate_market_commentary(fg_data, recent_signals, sentiment_data)
+    except Exception as e:
+        logger.debug(f"Commentary skip: {e}")
+
+    # Enviar resumen diario
+    telegram.send_daily_summary(
+        cedears_count=len(cedears),
+        cryptos_count=len(cryptos),
+        fg_msg=fg_msg,
+        dollar_msg=dollar_msg,
+        commentary=commentary,
+        top_signals=recent_signals,
+        news_preview=news_preview,
+    )
+
+    # SEC Filings (semanal, pero se chequea diario y solo avisa si hay algo nuevo)
+    try:
+        sec = SECMonitor()
+        filings = sec.scan_watchlist(cedears, days_back=7)
+        if filings:
+            telegram.send_sec_filings(filings)
+            logger.info(f"SEC: {len(filings)} filings enviados")
+    except Exception as e:
+        logger.warning(f"SEC error: {e}")
+
+    # Alertas de correlación dólar-CEDEAR
+    try:
+        if dollar_rates:
+            correlation_alerts = analyze_dollar_cedear_correlation(dollar_rates, recent_signals)
+            if correlation_alerts:
+                telegram.send_dollar_alert("", correlation_alerts)
+    except Exception as e:
+        logger.debug(f"Dollar correlation skip: {e}")
+
+    logger.info("Heartbeat diario completado")
+
+
+def run_screener():
+    """Screener de oportunidades — se ejecuta 1 vez por día."""
+    logger.info("=== Ejecutando screener ===")
+    db = SupabaseClient()
+    telegram = TelegramBot()
+    config = _load_config(db)
+
+    try:
+        iol = IOLClient()
+        screener = Screener(config)
+        cedears = db.get_cedears()
+        results = screener.scan_cedear(iol, cedears)
+        if results:
+            telegram.send_screener_results(results)
+            logger.info(f"Screener: {len(results)} candidatos enviados")
+        else:
+            logger.info("Screener: sin candidatos destacados")
+    except Exception as e:
+        logger.error(f"Screener error: {e}")
+
+
+def run_backtesting():
+    """Backtesting semanal de señales pasadas."""
+    logger.info("=== Ejecutando backtesting ===")
+    db = SupabaseClient()
+    telegram = TelegramBot()
+
+    try:
+        backtester = Backtester(db)
+        signals = backtester.get_past_signals(days_back=30)
+
+        binance = BinanceClient()
+        iol = IOLClient()
+        stats = backtester.analyze_signal_accuracy(signals, binance, iol)
+        msg = backtester.format_backtest_message(stats)
+        telegram.send_backtesting(msg)
+        logger.info(f"Backtesting: {stats.get('total_analizadas', 0)} señales analizadas")
+    except Exception as e:
+        logger.error(f"Backtesting error: {e}")
+
+
+def run_portfolio():
+    """Actualiza y envía resumen del portfolio."""
+    logger.info("=== Actualizando portfolio ===")
+    db = SupabaseClient()
+    telegram = TelegramBot()
+
+    try:
+        tracker = PortfolioTracker(db)
+        positions = tracker.get_positions()
+
+        if not positions:
+            logger.info("Portfolio vacío")
+            return
+
+        # Obtener precios actuales
+        current_prices = {}
+        binance = BinanceClient()
+        iol = IOLClient()
+
+        for pos in positions:
+            ticker = pos.get("ticker", "")
+            tipo = pos.get("tipo", "CEDEAR")
+            try:
+                if tipo == "CRYPTO":
+                    td = binance.get_ticker_24h(ticker)
+                    current_prices[ticker] = td.get("price", 0)
+                else:
+                    quote = iol.get_cedear_quote(ticker)
+                    current_prices[ticker] = float(quote.get("ultimoPrecio") or 0)
+            except Exception as e:
+                logger.warning(f"Precio no disponible para {ticker}: {e}")
+
+        pnl_data = tracker.calculate_pnl(positions, current_prices)
+        msg = tracker.format_portfolio_message(pnl_data)
+        telegram.send_portfolio(msg)
+
+    except Exception as e:
+        logger.error(f"Portfolio error: {e}")
