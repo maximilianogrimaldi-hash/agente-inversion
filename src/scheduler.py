@@ -41,6 +41,14 @@ def main():
         "Jobs: ciclo cada 15min | heartbeat 09:00 | portfolio 09:30 | screener 10:00 | backtesting lunes 08:30"
     )
 
+    # Panel web en un thread aparte (no debe tumbar el scheduler si falla)
+    try:
+        import threading
+        from web import serve as serve_panel
+        threading.Thread(target=serve_panel, daemon=True, name="panel").start()
+    except Exception as e:
+        logger.error(f"No se pudo levantar el panel web: {e}")
+
     # Análisis técnico cada 15 minutos
     schedule.every(15).minutes.do(safe(run_cycle, "ciclo"))
 

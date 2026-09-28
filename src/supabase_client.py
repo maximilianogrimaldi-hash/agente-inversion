@@ -73,6 +73,36 @@ class SupabaseClient:
             logger.error(f"Supabase UPSERT {table}: {e}")
             return None
 
+    def _patch(self, table: str, params: dict, data: dict) -> dict | None:
+        try:
+            resp = requests.patch(
+                f"{self.url}/rest/v1/{table}",
+                headers=self.headers,
+                params=params,
+                json=data,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return result[0] if isinstance(result, list) and result else (result or {})
+        except Exception as e:
+            logger.error(f"Supabase PATCH {table}: {e}")
+            return None
+
+    def _delete(self, table: str, params: dict) -> dict | None:
+        try:
+            resp = requests.delete(
+                f"{self.url}/rest/v1/{table}",
+                headers=self.headers,
+                params=params,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return {}
+        except Exception as e:
+            logger.error(f"Supabase DELETE {table}: {e}")
+            return None
+
     # ─── Watchlist ───────────────────────────────────────────────────────────
 
     def get_watchlist(self) -> list[dict]:
