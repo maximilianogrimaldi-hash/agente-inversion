@@ -335,7 +335,7 @@ function tarjeta(s){
   const bbCls = i.bb_pct == null ? "" : i.bb_pct <= 20 ? "ok" : i.bb_pct >= 80 ? "bad" : "";
   const rango = i.rango || {};
 
-  const motivos = (s.motivos || []).slice(0,4)
+  const motivos = (s.motivos || []).slice(0,5)
     .map(m => `<span class="motivo">${esc(m)}</span>`).join("");
 
   const news = (noticiasPorTicker[s.ticker] || []).slice(0,2)

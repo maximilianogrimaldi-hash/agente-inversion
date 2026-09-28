@@ -318,8 +318,10 @@ class Analyzer:
                 motivos.append("MACD cruzó a la baja su señal")
             elif hist > 0:
                 score += p * 0.4
+                motivos.append("MACD sobre su señal (impulso comprador)")
             elif hist < 0:
                 score -= p * 0.4
+                motivos.append("MACD bajo su señal (impulso vendedor)")
 
         # ── Tendencia: EMA9/21 + SMA50/200 ───────────────────────────────
         p = PESOS["tendencia"]
@@ -336,8 +338,10 @@ class Analyzer:
                 motivos.append("Cruce bajista EMA9/EMA21")
             elif ema9_v[-1] > ema21_v[-1]:
                 sub += 0.25
+                motivos.append("EMA9 sobre EMA21 (corto plazo al alza)")
             else:
                 sub -= 0.25
+                motivos.append("EMA9 bajo EMA21 (corto plazo a la baja)")
 
         sma50, sma200 = _sma(closes, 50), _sma(closes, 200)
         if sma50:
@@ -376,11 +380,13 @@ class Analyzer:
                 motivos.append("Precio tocando la banda inferior de Bollinger")
             elif pct_b < 0.2:
                 score += p * 0.5
+                motivos.append(f"En la zona baja del canal de Bollinger ({pct_b*100:.0f}%)")
             elif pct_b >= 0.95:
                 score -= p
                 motivos.append("Precio tocando la banda superior de Bollinger")
             elif pct_b > 0.8:
                 score -= p * 0.5
+                motivos.append(f"En la zona alta del canal de Bollinger ({pct_b*100:.0f}%)")
             if ancho < 6:
                 ind["bb_squeeze"] = True
                 motivos.append(f"Bandas comprimidas ({ancho:.1f}%): posible movimiento fuerte")
@@ -395,8 +401,10 @@ class Analyzer:
             p = PESOS["momentum"]
             if roc5 > 0 and roc20 > 0:
                 score += p * 0.6
+                motivos.append(f"Sube en 5 y 20 velas ({roc5:+.1f}% / {roc20:+.1f}%)")
             elif roc5 < 0 and roc20 < 0:
                 score -= p * 0.6
+                motivos.append(f"Baja en 5 y 20 velas ({roc5:+.1f}% / {roc20:+.1f}%)")
             elif roc5 > 0 and roc20 < 0:
                 score += p * 0.3
                 motivos.append(f"Momentum girando al alza ({roc5:+.1f}% en 5 velas)")
