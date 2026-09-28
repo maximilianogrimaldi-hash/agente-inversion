@@ -4,6 +4,7 @@ v2: agrega screener (1x/día 10:00), backtesting (lunes 08:00), portfolio (diari
 """
 
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -48,6 +49,15 @@ def main():
         threading.Thread(target=serve_panel, daemon=True, name="panel").start()
     except Exception as e:
         logger.error(f"No se pudo levantar el panel web: {e}")
+
+    # Sonda de diagnóstico IOL (solo con IOL_DIAG=1)
+    if os.environ.get("IOL_DIAG") == "1":
+        try:
+            import iol_probe
+            from iol_client import IOLClient
+            iol_probe.run(IOLClient()._headers())
+        except Exception as e:
+            logger.error(f"Sonda IOL fallo: {e}")
 
     # Análisis técnico cada 15 minutos
     schedule.every(15).minutes.do(safe(run_cycle, "ciclo"))

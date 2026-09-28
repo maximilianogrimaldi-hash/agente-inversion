@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 IOL_BASE_URL = "https://api.invertironline.com"
 TOKEN_URL = f"{IOL_BASE_URL}/token"
 API_V2_URL = f"{IOL_BASE_URL}/api/v2"
+MERCADO = "bCBA"
+
+
+def _raise_with_body(resp, contexto: str) -> None:
+    """Como raise_for_status, pero deja el cuerpo del error en el log."""
+    if resp.status_code >= 400:
+        body = (resp.text or "")[:200].replace("\n", " ")
+        logger.error(f"IOL {resp.status_code} en {contexto}: {body}")
+    resp.raise_for_status()
 
 
 class IOLClient:
@@ -78,23 +87,22 @@ class IOLClient:
         return {"Authorization": f"Bearer {self._ensure_token()}"}
 
     def get_cedear_quote(self, ticker: str) -> dict:
-        url = f"{API_V2_URL}/cotizaciones/bCBA/{ticker}/actual"
+        url = f"{API_V2_URL}/{MERCADO}/Titulos/{ticker}/Cotizacion"
         resp = requests.get(url, headers=self._headers(), timeout=10)
-        resp.raise_for_status()
+        _raise_with_body(resp, f"cotizacion {ticker}")
         return resp.json()
 
     def get_cedear_history(self, ticker: str, days: int = 50) -> list[dict]:
         date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         date_to = datetime.now().strftime("%Y-%m-%d")
-        url = f"{API_V2_URL}/cotizaciones/bCBA/{ticker}/historico"
-        params = {
-            "fechaDesde": date_from,
-            "fechaHasta": date_to,
-            "ajustada": "sinAjustar",
-        }
-        resp = requests.get(url, headers=self._headers(), params=params, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
+        url = (
+            f"{API_V2_URL}/{MERCADO}/Titulos/{ticker}/Cotizacion/seriehistorica"
+            f"/{date_from}/{date_to}/sinAjustar"
+        )
+        resp = requests.get(url, headers=self._headers(), timeout=15)
+        _raise_with_body(resp, f"historico {ticker}")
+        data = resp.json()
+        return data if isinstance(data, list) else []
 
     def get_multiple_cedears(self, tickers: list[str]) -> dict[str, dict]:
         results = {}
