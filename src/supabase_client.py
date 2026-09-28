@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 class SupabaseClient:
     def __init__(self):
         self.url = os.environ["SUPABASE_URL"].rstrip("/")
-        self.key = os.environ["SUPABASE_KEY"]
+        self.key = (
+            os.environ.get("SUPABASE_KEY")
+            or os.environ.get("SUPABASE_SERVICE_KEY")
+            or os.environ["SUPABASE_ANON_KEY"]
+        )
         self.headers = {
             "apikey": self.key,
             "Authorization": f"Bearer {self.key}",
