@@ -103,6 +103,27 @@ class SupabaseClient:
             logger.error(f"Supabase DELETE {table}: {e}")
             return None
 
+    # ─── Snapshot (estado actual de cada instrumento) ────────────────────────
+
+    def save_snapshot(self, sig_dict: dict) -> dict | None:
+        ind = sig_dict.get("indicadores", {}) or {}
+        payload = {
+            "ticker": sig_dict.get("ticker"),
+            "tipo": sig_dict.get("tipo"),
+            "precio": sig_dict.get("precio"),
+            "variacion_pct": sig_dict.get("variacion_pct"),
+            "senal": sig_dict.get("senal"),
+            "fuerza": sig_dict.get("fuerza"),
+            "score": ind.get("score"),
+            "motivos": sig_dict.get("motivos", []),
+            "indicadores": ind,
+            "actualizado_en": datetime.now(timezone.utc).isoformat(),
+        }
+        return self._upsert("snapshot", payload, on_conflict="ticker")
+
+    def get_snapshots(self) -> list[dict]:
+        return self._get("snapshot", {"select": "*", "order": "score.desc"})
+
     # ─── Watchlist ───────────────────────────────────────────────────────────
 
     def get_watchlist(self) -> list[dict]:

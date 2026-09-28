@@ -10,6 +10,7 @@ import base64
 import hmac
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
@@ -137,6 +138,63 @@ def get_alertas():
         "limit": "60",
     })
     return jsonify(rows or [])
+
+
+@app.get("/api/snapshot")
+@require_auth
+def get_snapshot():
+    """Estado actual de todos los instrumentos, con todos los indicadores."""
+    return jsonify(db().get_snapshots() or [])
+
+
+# ─── Caché simple en memoria para APIs externas ──────────────────────────
+
+_cache: dict = {}
+
+
+def cached(clave: str, segundos: int, productor):
+    ahora = time.time()
+    hit = _cache.get(clave)
+    if hit and ahora - hit[0] < segundos:
+        return hit[1]
+    try:
+        valor = productor()
+        _cache[clave] = (ahora, valor)
+        return valor
+    except Exception as e:
+        logger.warning(f"cache {clave}: {e}")
+        return hit[1] if hit else None
+
+
+@app.get("/api/contexto")
+@require_auth
+def get_contexto():
+    """Fear & Greed + tipos de cambio. Lo que hoy solo iba al resumen de Telegram."""
+    from fear_greed import get_fear_greed
+    from dollar_monitor import get_dollar_rates, get_dolar_mep_ccl
+
+    fg = cached("fg", 900, get_fear_greed)
+    dolar = cached("dolar", 600, get_dollar_rates) or {}
+    mep_ccl = cached("mep_ccl", 600, get_dolar_mep_ccl) or {}
+
+    return jsonify({
+        "fear_greed": fg,
+        "dolar": {**dolar, **{k: v for k, v in mep_ccl.items() if v}},
+    })
+
+
+@app.get("/api/noticias")
+@require_auth
+def get_noticias():
+    """Titulares de la watchlist, agrupados por ticker."""
+    from news_client import NewsClient
+
+    def traer():
+        d = db()
+        nc = NewsClient()
+        return nc.get_watchlist_news(d.get_cedears(), d.get_cryptos(), max_per_ticker=3)
+
+    return jsonify(cached("noticias", 900, traer) or [])
 
 
 # ─── Arranque ────────────────────────────────────────────────────────────

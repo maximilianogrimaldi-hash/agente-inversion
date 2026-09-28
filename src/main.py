@@ -60,11 +60,13 @@ def run_cycle():
             for ticker in cedears:
                 try:
                     quote = iol.get_cedear_quote(ticker)
-                    history = iol.get_cedear_history(ticker, days=50)
+                    history = iol.get_cedear_history(ticker, days=300)
                     sig = analyzer.analyze_cedear(ticker, quote, history)
                     precio = float(quote.get("ultimoPrecio") or quote.get("precio") or 0)
                     if precio > 0:
                         current_prices[ticker] = precio
+                    if sig:
+                        db.save_snapshot(sig.__dict__)
                     if sig and sig.senal not in ("NEUTRAL",):
                         if db.alert_already_sent(ticker, sig.senal, dedup_minutes):
                             logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")
@@ -87,10 +89,12 @@ def run_cycle():
             for symbol in cryptos:
                 try:
                     ticker_24h = binance.get_ticker_24h(symbol)
-                    klines = binance.get_klines(symbol, interval="15m", limit=50)
+                    klines = binance.get_klines(symbol, interval="1h", limit=250)
                     sig = analyzer.analyze_crypto(symbol, ticker_24h, klines)
                     if ticker_24h.get("price"):
                         current_prices[symbol] = ticker_24h["price"]
+                    if sig:
+                        db.save_snapshot(sig.__dict__)
                     if sig and sig.senal not in ("NEUTRAL",):
                         if db.alert_already_sent(symbol, sig.senal, dedup_minutes):
                             logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")

@@ -4,30 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-
-<style>
-html,body{margin:0}
-img{max-width:100%}
-[hidden]{display:none!important}
-:root{color-scheme:light}
-</style>
 <title>Mesa de Operaciones</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: tira de estado fija arriba, dos columnas (watchlist editable | señales) que colapsan a una en mobile */
+/* Layout: franja de contexto -> grilla de instrumentos -> columna lateral (watchlist + noticias) */
 :root{
   --ink:#16181d; --ink-soft:#5b6270; --ink-faint:#8d94a3;
-  --paper:#f7f7f4; --surface:#ffffff; --line:#e2e3df;
+  --paper:#f7f7f4; --surface:#ffffff; --line:#e2e3df; --line-soft:#eeefeb;
   --accent:#1a5c4a; --accent-soft:#e6f0ec;
   --buy:#1a7a4c; --sell:#b02a2a; --watch:#9a6b12; --neutral:#6b7280;
   --buy-bg:#e8f4ed; --sell-bg:#fbeaea; --watch-bg:#fdf3e0; --neutral-bg:#f0f1f3;
   --font-ui:'Inter',system-ui,-apple-system,sans-serif;
   --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,monospace;
+  color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     --ink:#e8e9e6; --ink-soft:#9ba2ae; --ink-faint:#6d7480;
-    --paper:#131519; --surface:#1b1e24; --line:#2c3038;
+    --paper:#131519; --surface:#1b1e24; --line:#2c3038; --line-soft:#23262c;
     --accent:#4fb894; --accent-soft:#16302a;
     --buy:#4fb87b; --sell:#e0736e; --watch:#d6a441; --neutral:#8d94a3;
     --buy-bg:#14291f; --sell-bg:#2c1817; --watch-bg:#2b2213; --neutral-bg:#22262d;
@@ -36,176 +30,215 @@ img{max-width:100%}
 }
 :root[data-theme="dark"]{
   --ink:#e8e9e6; --ink-soft:#9ba2ae; --ink-faint:#6d7480;
-  --paper:#131519; --surface:#1b1e24; --line:#2c3038;
+  --paper:#131519; --surface:#1b1e24; --line:#2c3038; --line-soft:#23262c;
   --accent:#4fb894; --accent-soft:#16302a;
   --buy:#4fb87b; --sell:#e0736e; --watch:#d6a441; --neutral:#8d94a3;
   --buy-bg:#14291f; --sell-bg:#2c1817; --watch-bg:#2b2213; --neutral-bg:#22262d;
   color-scheme:dark;
 }
-
 *{box-sizing:border-box}
+html,body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
 body{
   background:var(--paper); color:var(--ink);
   font-family:var(--font-ui); font-size:15px; line-height:1.5;
-  padding-inline:16px; padding-block:0 48px;
-  max-width:1180px; margin-inline:auto;
+  padding-inline:16px; padding-block:0 56px;
+  max-width:1320px; margin-inline:auto;
 }
+button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+h1{font-size:21px; font-weight:700; letter-spacing:-.02em; margin:0}
+h2{font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-soft); margin:0}
 
-/* ── Encabezado ─────────────────────────────────────────── */
+/* ── Encabezado y contexto ──────────────────────────────── */
 header{
   position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
-  background:var(--paper);
-  border-bottom:1px solid var(--line);
-  padding-block:18px 14px; margin-bottom:24px;
+  background:var(--paper); border-bottom:1px solid var(--line);
+  padding-block:16px 12px; margin-bottom:22px;
 }
 .titlebar{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px}
-h1{font-size:22px; font-weight:700; letter-spacing:-.02em; margin:0}
 .sub{font-size:12.5px; color:var(--ink-faint); font-family:var(--font-mono)}
-
-.status{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
-.pill{
-  display:inline-flex; align-items:center; gap:6px;
-  font-family:var(--font-mono); font-size:11.5px; font-weight:500;
-  padding:5px 10px; border-radius:999px;
-  background:var(--surface); border:1px solid var(--line); color:var(--ink-soft);
+.contexto{display:flex; gap:8px; flex-wrap:wrap; align-items:stretch}
+.ctx{
+  display:flex; flex-direction:column; gap:1px;
+  padding:7px 12px; border-radius:8px; min-width:0;
+  background:var(--surface); border:1px solid var(--line);
 }
-.dot{width:7px; height:7px; border-radius:50%; background:var(--neutral); flex:none}
-.dot.live{background:var(--buy)}
-.dot.stale{background:var(--watch)}
-.dot.down{background:var(--sell)}
+.ctx-lbl{font-size:9.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-faint)}
+.ctx-val{font-family:var(--font-mono); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap}
+.ctx-sub{font-size:10.5px; color:var(--ink-soft)}
+.dot{width:7px; height:7px; border-radius:50%; background:var(--neutral); flex:none; display:inline-block}
+.dot.live{background:var(--buy)} .dot.stale{background:var(--watch)} .dot.down{background:var(--sell)}
 
-/* ── Grilla principal ───────────────────────────────────── */
-.grid{display:grid; grid-template-columns:minmax(0,380px) minmax(0,1fr); gap:28px; align-items:start}
-@media (max-width:820px){ .grid{grid-template-columns:minmax(0,1fr)} }
-
+/* ── Grilla ─────────────────────────────────────────────── */
+.grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,330px); gap:26px; align-items:start}
+@media (max-width:960px){ .grid{grid-template-columns:minmax(0,1fr)} }
 section{min-width:0}
 .sec-head{
   display:flex; align-items:center; justify-content:space-between; gap:12px;
-  margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line);
-}
-h2{
-  font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
-  color:var(--ink-soft); margin:0;
+  margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line); flex-wrap:wrap;
 }
 .count{font-family:var(--font-mono); font-size:11.5px; color:var(--ink-faint)}
+.filters{display:flex; gap:5px; flex-wrap:wrap}
+.chip{
+  font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:999px;
+  border:1px solid var(--line); background:var(--surface); color:var(--ink-soft);
+}
+.chip[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:#fff}
 
-/* ── Watchlist ──────────────────────────────────────────── */
-.addbar{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap}
-.addbar input{
-  flex:1 1 110px; min-width:0;
-  font-family:var(--font-mono); font-size:14px; text-transform:uppercase;
-  padding:9px 11px; border:1px solid var(--line); border-radius:7px;
-  background:var(--surface); color:var(--ink);
+/* ── Tarjeta de instrumento ─────────────────────────────── */
+.cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:10px}
+.card{
+  background:var(--surface); border:1px solid var(--line);
+  border-left:3px solid var(--neutral); border-radius:8px;
+  padding:13px 15px; min-width:0;
 }
-.addbar select{
-  font-family:var(--font-ui); font-size:13.5px;
-  padding:9px 8px; border:1px solid var(--line); border-radius:7px;
-  background:var(--surface); color:var(--ink);
-}
-button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit}
-.btn{
-  font-size:13.5px; font-weight:600; padding:9px 15px; border-radius:7px;
-  background:var(--accent); color:#fff; white-space:nowrap;
-}
-.btn:hover{opacity:.9}
-.btn:disabled{opacity:.45; cursor:not-allowed}
-:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
-
-ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px}
-.row{
-  display:flex; align-items:center; gap:10px;
-  padding:10px 12px; background:var(--surface);
-  border:1px solid var(--line); border-radius:7px;
-}
-.row.off{opacity:.45}
-.tk{font-family:var(--font-mono); font-size:14px; font-weight:600; letter-spacing:.01em}
-.tag{
-  font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
-  padding:2px 7px; border-radius:4px; background:var(--neutral-bg); color:var(--ink-soft);
-}
-.tag.crypto{background:var(--accent-soft); color:var(--accent)}
-.spacer{flex:1; min-width:0}
-.icon{
-  font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
-  padding:5px 9px; border-radius:6px; color:var(--ink-soft);
-  border:1px solid var(--line); background:var(--paper); white-space:nowrap;
-}
-.icon:hover{color:var(--ink); border-color:var(--ink-faint)}
-.icon.danger:hover{color:var(--sell); border-color:var(--sell)}
-
-/* ── Señales ────────────────────────────────────────────── */
-.signals{display:flex; flex-direction:column; gap:8px}
-.sig{
-  display:grid; grid-template-columns:auto minmax(0,1fr) auto;
-  gap:4px 12px; align-items:center;
-  padding:12px 14px; background:var(--surface);
-  border:1px solid var(--line); border-left:3px solid var(--neutral); border-radius:7px;
-}
-.sig.BUY{border-left-color:var(--buy)}
-.sig.SELL{border-left-color:var(--sell)}
-.sig.WATCH{border-left-color:var(--watch)}
+.card.BUY{border-left-color:var(--buy)}
+.card.SELL{border-left-color:var(--sell)}
+.card.WATCH{border-left-color:var(--watch)}
+.card-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:3px}
+.tk{font-family:var(--font-mono); font-size:16px; font-weight:600}
 .badge{
-  font-family:var(--font-mono); font-size:10.5px; font-weight:600; letter-spacing:.06em;
-  padding:3px 8px; border-radius:4px;
-  background:var(--neutral-bg); color:var(--neutral);
+  font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.05em;
+  padding:3px 7px; border-radius:4px; background:var(--neutral-bg); color:var(--neutral);
 }
 .badge.BUY{background:var(--buy-bg); color:var(--buy)}
 .badge.SELL{background:var(--sell-bg); color:var(--sell)}
 .badge.WATCH{background:var(--watch-bg); color:var(--watch)}
-.sig-tk{font-family:var(--font-mono); font-size:14.5px; font-weight:600}
-.sig-px{
-  font-family:var(--font-mono); font-size:13px; font-variant-numeric:tabular-nums;
-  color:var(--ink-soft); text-align:right; white-space:nowrap;
+.tag{
+  font-size:9.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 6px; border-radius:4px; background:var(--neutral-bg); color:var(--ink-soft);
+}
+.tag.crypto{background:var(--accent-soft); color:var(--accent)}
+.spacer{flex:1; min-width:0}
+.precio{
+  font-family:var(--font-mono); font-size:15px; font-weight:600;
+  font-variant-numeric:tabular-nums; white-space:nowrap;
 }
 .up{color:var(--buy)} .dn{color:var(--sell)}
-.why{
-  grid-column:1/-1; font-size:12.5px; color:var(--ink-soft);
-  display:flex; gap:6px; flex-wrap:wrap; align-items:baseline;
+
+/* Barra de fuerza: traduce el score -10..+10 a una posicion visual */
+.medidor{margin:9px 0 10px}
+.medidor-pista{
+  position:relative; height:5px; border-radius:3px;
+  background:linear-gradient(90deg,var(--sell-bg),var(--neutral-bg) 50%,var(--buy-bg));
+  border:1px solid var(--line-soft);
 }
-.when{font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); white-space:nowrap}
+.medidor-marca{
+  position:absolute; top:50%; width:3px; height:13px; border-radius:2px;
+  background:var(--ink); transform:translate(-50%,-50%);
+}
+.medidor-cero{position:absolute; top:-2px; bottom:-2px; left:50%; width:1px; background:var(--line)}
+.medidor-pies{
+  display:flex; justify-content:space-between; margin-top:4px;
+  font-size:9.5px; color:var(--ink-faint); font-family:var(--font-mono);
+}
+
+/* Rejilla de indicadores */
+.inds{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(74px,1fr)); gap:7px 10px;
+  padding-top:10px; border-top:1px solid var(--line-soft);
+}
+.ind{display:flex; flex-direction:column; gap:0; min-width:0}
+.ind-lbl{font-size:9.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint); white-space:nowrap}
+.ind-val{
+  font-family:var(--font-mono); font-size:12.5px; font-weight:600;
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.ind-val.ok{color:var(--buy)} .ind-val.bad{color:var(--sell)} .ind-val.warn{color:var(--watch)}
+
+.motivos{
+  margin-top:10px; padding-top:9px; border-top:1px solid var(--line-soft);
+  display:flex; flex-direction:column; gap:3px;
+}
+.motivo{font-size:12px; color:var(--ink-soft); display:flex; gap:6px; align-items:baseline}
+.motivo::before{content:"·"; color:var(--ink-faint); flex:none}
+.card-news{margin-top:9px; padding-top:9px; border-top:1px solid var(--line-soft)}
+.card-news a{
+  display:block; font-size:11.5px; color:var(--ink-soft);
+  text-decoration:none; margin-bottom:3px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.card-news a:hover{color:var(--accent); text-decoration:underline}
+.when{font-family:var(--font-mono); font-size:10px; color:var(--ink-faint)}
+
+/* ── Columna lateral ────────────────────────────────────── */
+.addbar{display:flex; gap:7px; margin-bottom:12px; flex-wrap:wrap}
+.addbar input{
+  flex:1 1 100px; min-width:0; font-family:var(--font-mono); font-size:14px; text-transform:uppercase;
+  padding:8px 10px; border:1px solid var(--line); border-radius:7px;
+  background:var(--surface); color:var(--ink);
+}
+.addbar select{
+  font-size:13px; padding:8px; border:1px solid var(--line); border-radius:7px;
+  background:var(--surface); color:var(--ink);
+}
+.btn{font-size:13px; font-weight:600; padding:8px 14px; border-radius:7px; background:var(--accent); color:#fff; white-space:nowrap}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px}
+.row{
+  display:flex; align-items:center; gap:8px; padding:8px 11px;
+  background:var(--surface); border:1px solid var(--line); border-radius:7px;
+}
+.row.off{opacity:.45}
+.icon{
+  font-size:10.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  padding:4px 8px; border-radius:6px; color:var(--ink-soft);
+  border:1px solid var(--line); background:var(--paper); white-space:nowrap;
+}
+.icon:hover{color:var(--ink); border-color:var(--ink-faint)}
+.icon.danger:hover{color:var(--sell); border-color:var(--sell)}
+.noticias{display:flex; flex-direction:column; gap:9px}
+.noticia{padding:9px 11px; background:var(--surface); border:1px solid var(--line); border-radius:7px}
+.noticia a{font-size:12.5px; color:var(--ink); text-decoration:none; display:block; line-height:1.4}
+.noticia a:hover{color:var(--accent)}
+.noticia .meta{font-family:var(--font-mono); font-size:10px; color:var(--ink-faint); margin-top:4px}
 
 .empty{
-  padding:28px 18px; text-align:center;
-  border:1px dashed var(--line); border-radius:8px;
-  color:var(--ink-faint); font-size:13.5px;
+  padding:24px 16px; text-align:center; border:1px dashed var(--line);
+  border-radius:8px; color:var(--ink-faint); font-size:13px;
 }
-.err{
-  padding:12px 14px; border-radius:7px; margin-bottom:14px;
-  background:var(--sell-bg); color:var(--sell); font-size:13px;
-}
-.filters{display:flex; gap:6px; flex-wrap:wrap}
-.chip{
-  font-size:11.5px; font-weight:600; letter-spacing:.03em;
-  padding:5px 11px; border-radius:999px;
-  border:1px solid var(--line); background:var(--surface); color:var(--ink-soft);
-}
-.chip[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:#fff}
-footer{
-  margin-top:34px; padding-top:16px; border-top:1px solid var(--line);
-  font-size:12px; color:var(--ink-faint); line-height:1.7;
-}
-code{font-family:var(--font-mono); font-size:11.5px}
+.err{padding:11px 13px; border-radius:7px; margin-bottom:12px; background:var(--sell-bg); color:var(--sell); font-size:12.5px}
+footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font-size:11.5px; color:var(--ink-faint); line-height:1.7}
 </style>
 </head>
 <body>
+
 <header>
   <div class="titlebar">
     <h1>Mesa de Operaciones</h1>
     <span class="sub">CEDEARs · Cripto · bCBA</span>
   </div>
-  <div class="status" id="status">
-    <span class="pill"><span class="dot" id="dot-agent"></span><span id="txt-agent">Conectando…</span></span>
-    <span class="pill"><span id="txt-count">—</span></span>
-    <span class="pill"><span id="txt-last">—</span></span>
+  <div class="contexto" id="contexto">
+    <div class="ctx">
+      <span class="ctx-lbl">Agente</span>
+      <span class="ctx-val"><span class="dot" id="dot-agent"></span> <span id="txt-agent">Cargando</span></span>
+      <span class="ctx-sub" id="txt-last">—</span>
+    </div>
   </div>
 </header>
 
 <div class="grid">
   <section>
     <div class="sec-head">
-      <h2>Qué vigila</h2>
-      <span class="count" id="wl-count"></span>
+      <h2>Instrumentos</h2>
+      <div class="filters" id="filters">
+        <button class="chip" data-f="TODOS" aria-pressed="true">Todos</button>
+        <button class="chip" data-f="BUY" aria-pressed="false">Compra</button>
+        <button class="chip" data-f="SELL" aria-pressed="false">Venta</button>
+        <button class="chip" data-f="WATCH" aria-pressed="false">Atención</button>
+        <button class="chip" data-f="CEDEAR" aria-pressed="false">CEDEARs</button>
+        <button class="chip" data-f="CRYPTO" aria-pressed="false">Cripto</button>
+      </div>
     </div>
+    <div class="err" id="snap-err" hidden></div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Qué vigila</h2><span class="count" id="wl-count"></span></div>
     <div class="err" id="wl-err" hidden></div>
     <form class="addbar" id="add-form">
       <input id="add-ticker" placeholder="AAPL" maxlength="14" autocomplete="off" aria-label="Ticker">
@@ -216,35 +249,21 @@ code{font-family:var(--font-mono); font-size:11.5px}
       <button class="btn" type="submit">Agregar</button>
     </form>
     <ul id="watchlist"></ul>
-  </section>
 
-  <section>
-    <div class="sec-head">
-      <h2>Señales recientes</h2>
-      <div class="filters" id="filters">
-        <button class="chip" data-f="ALL" aria-pressed="true">Todas</button>
-        <button class="chip" data-f="BUY" aria-pressed="false">Compra</button>
-        <button class="chip" data-f="SELL" aria-pressed="false">Venta</button>
-        <button class="chip" data-f="WATCH" aria-pressed="false">Atención</button>
-      </div>
-    </div>
-    <div class="err" id="sig-err" hidden></div>
-    <div class="signals" id="signals"></div>
+    <div class="sec-head" style="margin-top:26px"><h2>Noticias</h2></div>
+    <div class="noticias" id="noticias"></div>
   </section>
 </div>
 
 <footer>
-  El agente corre en Railway y revisa la lista cada 15 minutos; las alertas llegan por Telegram.
-  Lo que desactivás acá deja de analizarse en el ciclo siguiente.<br>
-  Resumen diario 09:00 · Portfolio 09:30 · Screener 10:00 · Backtesting lunes 08:30 (hora Argentina).
+  El agente revisa cada 15 minutos y alerta por Telegram. Lo que pausás acá deja de analizarse en el ciclo siguiente.<br>
+  Resumen diario 09:00 · Portfolio 09:30 · Screener 14:00 · Backtesting lunes 08:30 (UTC).<br>
+  El puntaje va de −10 a +10 y pondera RSI, MACD, tendencia, Bollinger, momentum, posición en el rango y volumen.
 </footer>
 
 <script>
 async function api(path, opts={}){
-  const r = await fetch("/api/"+path, {
-    ...opts,
-    headers:{"Content-Type":"application/json", ...(opts.headers||{})}
-  });
+  const r = await fetch("/api/"+path, {...opts, headers:{"Content-Type":"application/json", ...(opts.headers||{})}});
   if(!r.ok){
     let msg = r.status;
     try{ msg = (await r.json()).error || msg; }catch(_){}
@@ -253,8 +272,9 @@ async function api(path, opts={}){
   return r.status === 204 ? null : r.json();
 }
 
-let filter = "ALL", alerts = [];
+let filtro = "TODOS", snaps = [], noticiasPorTicker = {};
 
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ago = iso => {
   if(!iso) return "";
   const m = Math.floor((Date.now() - new Date(iso)) / 60000);
@@ -264,35 +284,168 @@ const ago = iso => {
   if(h < 24) return `hace ${h} h`;
   return `hace ${Math.floor(h/24)} d`;
 };
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = (v, d=2) => v == null || v === "" ? null : Number(v).toLocaleString("es-AR",{minimumFractionDigits:d, maximumFractionDigits:d});
+function err(id, e){ const el=document.getElementById(id); el.hidden=false; el.textContent="Error: "+e.message; }
+
+// ── Contexto de mercado ────────────────────────────────────
+function ctxCard(lbl, val, sub, cls=""){
+  return `<div class="ctx"><span class="ctx-lbl">${esc(lbl)}</span>
+    <span class="ctx-val ${cls}">${val}</span>
+    <span class="ctx-sub">${sub || ""}</span></div>`;
+}
+
+async function cargarContexto(){
+  let extra = "";
+  try{
+    const c = await api("contexto");
+    const fg = c.fear_greed, d = c.dolar || {};
+    if(fg && fg.value != null){
+      const v = Number(fg.value);
+      const cls = v <= 25 ? "dn" : v >= 75 ? "up" : "";
+      const cara = v <= 25 ? "Miedo extremo" : v <= 45 ? "Miedo" : v <= 55 ? "Neutral" : v <= 75 ? "Codicia" : "Codicia extrema";
+      extra += ctxCard("Fear & Greed", v, esc(fg.rating || cara), cls);
+    }
+    if(d.oficial) extra += ctxCard("Oficial", "$"+num(d.oficial,0), "");
+    if(d.blue)    extra += ctxCard("Blue", "$"+num(d.blue,0), d.spread_blue_pct != null ? `brecha ${num(d.spread_blue_pct,1)}%` : "");
+    if(d.mep)     extra += ctxCard("MEP", "$"+num(d.mep,0), "");
+    if(d.ccl)     extra += ctxCard("CCL", "$"+num(d.ccl,0), "");
+  }catch(e){ /* el contexto es complementario: si falla, el panel sigue */ }
+  document.getElementById("contexto").insertAdjacentHTML("beforeend", extra);
+}
+
+// ── Tarjetas de instrumento ────────────────────────────────
+function indHTML(lbl, val, cls=""){
+  if(val == null || val === "") return "";
+  return `<div class="ind"><span class="ind-lbl">${esc(lbl)}</span><span class="ind-val ${cls}">${val}</span></div>`;
+}
+
+function tarjeta(s){
+  const i = s.indicadores || {};
+  const score = Number(s.score ?? i.score ?? 0);
+  const v = s.variacion_pct == null ? null : Number(s.variacion_pct);
+  const pos = Math.max(0, Math.min(100, (score + 10) / 20 * 100));
+  const esCrypto = s.tipo === "CRYPTO";
+  const dec = esCrypto && Number(s.precio) < 10 ? 4 : 2;
+
+  // RSI: bajo = oportunidad de compra, alto = riesgo
+  const rsi = i.rsi;
+  const rsiCls = rsi == null ? "" : rsi < 30 ? "ok" : rsi > 70 ? "bad" : "";
+  const macdCls = i.macd_hist == null ? "" : i.macd_hist > 0 ? "ok" : "bad";
+  const tendCls = i.tendencia_larga === "alcista" ? "ok" : i.tendencia_larga === "bajista" ? "bad" : "";
+  const bbCls = i.bb_pct == null ? "" : i.bb_pct <= 20 ? "ok" : i.bb_pct >= 80 ? "bad" : "";
+  const rango = i.rango || {};
+
+  const motivos = (s.motivos || []).slice(0,4)
+    .map(m => `<span class="motivo">${esc(m)}</span>`).join("");
+
+  const news = (noticiasPorTicker[s.ticker] || []).slice(0,2)
+    .map(n => `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>`).join("");
+
+  return `<article class="card ${esc(s.senal)}">
+    <div class="card-top">
+      <span class="tk">${esc(s.ticker)}</span>
+      <span class="tag${esCrypto ? " crypto" : ""}">${esCrypto ? "cripto" : "cedear"}</span>
+      <span class="badge ${esc(s.senal)}">${esc(s.senal)}${s.fuerza && s.fuerza !== "DEBIL" ? " · "+esc(s.fuerza) : ""}</span>
+      <span class="spacer"></span>
+      <span class="precio">$${num(s.precio, dec) ?? "—"}${
+        v == null ? "" : ` <span class="${v>=0?"up":"dn"}">${v>=0?"+":""}${v.toFixed(2)}%</span>`}</span>
+    </div>
+
+    <div class="medidor">
+      <div class="medidor-pista">
+        <div class="medidor-cero"></div>
+        <div class="medidor-marca" style="left:${pos}%"></div>
+      </div>
+      <div class="medidor-pies"><span>venta −10</span><span>puntaje ${score>=0?"+":""}${score.toFixed(1)}</span><span>+10 compra</span></div>
+    </div>
+
+    <div class="inds">
+      ${indHTML("RSI", rsi == null ? null : rsi.toFixed(0), rsiCls)}
+      ${indHTML("MACD", i.macd_hist == null ? null : (i.macd_hist>0?"alcista":"bajista"), macdCls)}
+      ${indHTML("Tendencia", i.tendencia_larga || null, tendCls)}
+      ${indHTML("Bollinger", i.bb_pct == null ? null : i.bb_pct.toFixed(0)+"%", bbCls)}
+      ${indHTML("5 velas", i.roc_5 == null ? null : (i.roc_5>=0?"+":"")+i.roc_5.toFixed(1)+"%", i.roc_5==null?"":i.roc_5>=0?"ok":"bad")}
+      ${indHTML("20 velas", i.roc_20 == null ? null : (i.roc_20>=0?"+":"")+i.roc_20.toFixed(1)+"%", i.roc_20==null?"":i.roc_20>=0?"ok":"bad")}
+      ${indHTML("En el rango", rango.posicion_pct == null ? null : rango.posicion_pct.toFixed(0)+"%")}
+      ${indHTML("Volatilidad", i.atr_pct == null ? null : i.atr_pct.toFixed(1)+"%")}
+      ${indHTML("Soporte", i.soporte == null ? null : "$"+num(i.soporte,dec))}
+      ${indHTML("Resistencia", i.resistencia == null ? null : "$"+num(i.resistencia,dec))}
+      ${indHTML("Volumen", i.vol_ratio == null ? null : i.vol_ratio.toFixed(1)+"x", i.vol_ratio>2?"warn":"")}
+    </div>
+
+    ${motivos ? `<div class="motivos">${motivos}</div>` : ""}
+    ${news ? `<div class="card-news">${news}</div>` : ""}
+    <div class="when" style="margin-top:8px">${ago(s.actualizado_en)}</div>
+  </article>`;
+}
+
+function render(){
+  const box = document.getElementById("cards");
+  let lista = snaps;
+  if(["BUY","SELL","WATCH"].includes(filtro))      lista = snaps.filter(s => s.senal === filtro);
+  else if(["CEDEAR","CRYPTO"].includes(filtro))    lista = snaps.filter(s => s.tipo === filtro);
+
+  if(!lista.length){
+    box.innerHTML = `<div class="empty">${snaps.length
+      ? "Ningún instrumento en esta categoría ahora mismo."
+      : "Todavía sin datos. El agente analiza cada 15 minutos."}</div>`;
+    return;
+  }
+  // Más accionable primero: mayor |puntaje| arriba
+  lista = [...lista].sort((a,b) => Math.abs(Number(b.score||0)) - Math.abs(Number(a.score||0)));
+  box.innerHTML = lista.map(tarjeta).join("");
+}
+
+async function cargarSnapshot(){
+  try{
+    snaps = await api("snapshot");
+    document.getElementById("snap-err").hidden = true;
+    const ultimo = snaps.map(s => s.actualizado_en).filter(Boolean).sort().pop();
+    const mins = ultimo ? (Date.now() - new Date(ultimo))/60000 : Infinity;
+    const dot = document.getElementById("dot-agent"), txt = document.getElementById("txt-agent");
+    dot.className = "dot " + (mins < 45 ? "live" : mins < 180 ? "stale" : "down");
+    txt.textContent = mins < 45 ? "Activo" : mins < 180 ? "Demorado" : "Sin actividad";
+    document.getElementById("txt-last").textContent = ultimo ? "Actualizado "+ago(ultimo) : "Sin datos";
+    render();
+  }catch(e){ err("snap-err", e); }
+}
+
+async function cargarNoticias(){
+  try{
+    const items = await api("noticias");
+    noticiasPorTicker = {};
+    for(const n of items){
+      (noticiasPorTicker[n.ticker] = noticiasPorTicker[n.ticker] || []).push(n);
+    }
+    const box = document.getElementById("noticias");
+    box.innerHTML = items.length
+      ? items.slice(0,12).map(n => `<div class="noticia">
+          <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>
+          <div class="meta">${esc(n.ticker || "")}</div></div>`).join("")
+      : `<div class="empty">Sin titulares recientes.</div>`;
+    render();
+  }catch(e){
+    document.getElementById("noticias").innerHTML = `<div class="empty">No pude traer noticias.</div>`;
+  }
+}
 
 // ── Watchlist ──────────────────────────────────────────────
-async function loadWatchlist(){
+async function cargarWatchlist(){
   const box = document.getElementById("watchlist");
-  const err = document.getElementById("wl-err");
   try{
     const rows = await api("watchlist");
-    err.hidden = true;
+    document.getElementById("wl-err").hidden = true;
     const on = rows.filter(r => r.activo).length;
     document.getElementById("wl-count").textContent = `${on} activos · ${rows.length} total`;
-    document.getElementById("txt-count").textContent = `${on} instrumentos`;
-
-    if(!rows.length){
-      box.innerHTML = `<li class="empty">Sin instrumentos. Agregá el primero arriba.</li>`;
-      return;
-    }
-    box.innerHTML = rows.map(r => `
+    box.innerHTML = rows.length ? rows.map(r => `
       <li class="row${r.activo ? "" : " off"}">
-        <span class="tk">${esc(r.ticker)}</span>
+        <span class="tk" style="font-size:13.5px">${esc(r.ticker)}</span>
         <span class="tag${r.tipo === "CRYPTO" ? " crypto" : ""}">${r.tipo === "CRYPTO" ? "cripto" : "cedear"}</span>
         <span class="spacer"></span>
         <button class="icon" data-toggle="${r.id}" data-to="${r.activo ? "false" : "true"}">${r.activo ? "Pausar" : "Activar"}</button>
-        <button class="icon danger" data-del="${r.id}" data-tk="${esc(r.ticker)}">Quitar</button>
-      </li>`).join("");
-  }catch(e){
-    err.hidden = false;
-    err.textContent = "No pude leer la watchlist: " + e.message;
-  }
+        <button class="icon danger" data-del="${r.id}">Quitar</button>
+      </li>`).join("") : `<li class="empty">Sin instrumentos.</li>`;
+  }catch(e){ err("wl-err", e); }
 }
 
 document.getElementById("watchlist").addEventListener("click", async ev => {
@@ -300,23 +453,21 @@ document.getElementById("watchlist").addEventListener("click", async ev => {
   if(t){
     t.disabled = true;
     try{
-      await api("watchlist/"+t.dataset.toggle, {
-        method:"PATCH", body:JSON.stringify({activo: t.dataset.to === "true"})
-      });
-      await loadWatchlist();
-    }catch(e){ t.disabled = false; alertErr("wl-err", e); }
+      await api("watchlist/"+t.dataset.toggle, {method:"PATCH", body:JSON.stringify({activo: t.dataset.to === "true"})});
+      await cargarWatchlist();
+    }catch(e){ t.disabled = false; err("wl-err", e); }
   }
   if(d){
     if(d.dataset.confirm !== "1"){
       d.dataset.confirm = "1"; d.textContent = "¿Seguro?";
-      setTimeout(() => { if(d.isConnected){ d.dataset.confirm = ""; d.textContent = "Quitar"; } }, 3500);
+      setTimeout(() => { if(d.isConnected){ d.dataset.confirm=""; d.textContent="Quitar"; } }, 3500);
       return;
     }
     d.disabled = true;
     try{
       await api("watchlist/"+d.dataset.del, {method:"DELETE"});
-      await loadWatchlist();
-    }catch(e){ d.disabled = false; alertErr("wl-err", e); }
+      await cargarWatchlist();
+    }catch(e){ d.disabled = false; err("wl-err", e); }
   }
 });
 
@@ -328,74 +479,26 @@ document.getElementById("add-form").addEventListener("submit", async ev => {
   const btn = ev.target.querySelector(".btn");
   btn.disabled = true;
   try{
-    await api("watchlist", {
-      method:"POST",
-      body:JSON.stringify({ticker, tipo:document.getElementById("add-tipo").value, activo:true, notas:""})
-    });
+    await api("watchlist", {method:"POST", body:JSON.stringify({ticker, tipo:document.getElementById("add-tipo").value})});
     inp.value = "";
-    await loadWatchlist();
-  }catch(e){ alertErr("wl-err", e); }
+    await cargarWatchlist();
+  }catch(e){ err("wl-err", e); }
   btn.disabled = false;
 });
-
-function alertErr(id, e){
-  const el = document.getElementById(id);
-  el.hidden = false;
-  el.textContent = "Error: " + e.message;
-}
-
-// ── Señales ────────────────────────────────────────────────
-function renderSignals(){
-  const box = document.getElementById("signals");
-  const list = filter === "ALL" ? alerts : alerts.filter(a => a.senal === filter);
-  if(!list.length){
-    box.innerHTML = `<div class="empty">${alerts.length ? "Ninguna señal de este tipo en las últimas 48 h." : "Todavía no hay señales. El agente revisa cada 15 minutos."}</div>`;
-    return;
-  }
-  box.innerHTML = list.map(a => {
-    const v = a.variacion_pct == null ? null : Number(a.variacion_pct);
-    const px = a.precio == null ? "" : Number(a.precio).toLocaleString("es-AR", {maximumFractionDigits:2});
-    const motivos = Array.isArray(a.motivos) ? a.motivos.slice(0,3).join(" · ") : "";
-    return `<article class="sig ${esc(a.senal)}">
-      <span class="badge ${esc(a.senal)}">${esc(a.senal)}</span>
-      <span class="sig-tk">${esc(a.ticker)} <span class="tag${a.tipo === "CRYPTO" ? " crypto" : ""}">${a.tipo === "CRYPTO" ? "cripto" : "cedear"}</span></span>
-      <span class="sig-px">${px ? "$"+px : ""}${v == null ? "" : ` <span class="${v >= 0 ? "up" : "dn"}">${v >= 0 ? "+" : ""}${v.toFixed(2)}%</span>`}</span>
-      <div class="why"><span>${esc(motivos || a.fuerza || "")}</span><span class="when">${ago(a.creado_en)}</span></div>
-    </article>`;
-  }).join("");
-}
-
-async function loadSignals(){
-  const err = document.getElementById("sig-err");
-  try{
-    alerts = await api("alertas");
-    err.hidden = true;
-    const last = alerts[0]?.creado_en;
-    document.getElementById("txt-last").textContent = last ? "Última señal " + ago(last) : "Sin señales en 48 h";
-    const dot = document.getElementById("dot-agent"), txt = document.getElementById("txt-agent");
-    const mins = last ? (Date.now() - new Date(last)) / 60000 : Infinity;
-    dot.className = "dot " + (mins < 90 ? "live" : mins < 1440 ? "stale" : "down");
-    txt.textContent = mins < 90 ? "Agente activo" : mins < 1440 ? "Agente en silencio" : "Sin actividad reciente";
-    renderSignals();
-  }catch(e){
-    err.hidden = false;
-    err.textContent = "No pude leer las señales: " + e.message;
-    document.getElementById("txt-agent").textContent = "Sin conexión";
-    document.getElementById("dot-agent").className = "dot down";
-  }
-}
 
 document.getElementById("filters").addEventListener("click", ev => {
   const c = ev.target.closest(".chip");
   if(!c) return;
-  filter = c.dataset.f;
+  filtro = c.dataset.f;
   [...ev.currentTarget.querySelectorAll(".chip")].forEach(b => b.setAttribute("aria-pressed", String(b === c)));
-  renderSignals();
+  render();
 });
 
-loadWatchlist();
-loadSignals();
-setInterval(loadSignals, 120000);
+cargarContexto();
+cargarSnapshot();
+cargarWatchlist();
+cargarNoticias();
+setInterval(cargarSnapshot, 120000);
 </script>
 </body>
 </html>
