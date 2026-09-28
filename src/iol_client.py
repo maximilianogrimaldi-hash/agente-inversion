@@ -78,7 +78,7 @@ class IOLClient:
         return {"Authorization": f"Bearer {self._ensure_token()}"}
 
     def get_cedear_quote(self, ticker: str) -> dict:
-        url = f"{API_V2_URL}/cotizaciones/cedears/{ticker}/actual"
+        url = f"{API_V2_URL}/cotizaciones/bCBA/{ticker}/actual"
         resp = requests.get(url, headers=self._headers(), timeout=10)
         resp.raise_for_status()
         return resp.json()
@@ -86,7 +86,7 @@ class IOLClient:
     def get_cedear_history(self, ticker: str, days: int = 50) -> list[dict]:
         date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         date_to = datetime.now().strftime("%Y-%m-%d")
-        url = f"{API_V2_URL}/cotizaciones/cedears/{ticker}/historico"
+        url = f"{API_V2_URL}/cotizaciones/bCBA/{ticker}/historico"
         params = {
             "fechaDesde": date_from,
             "fechaHasta": date_to,
