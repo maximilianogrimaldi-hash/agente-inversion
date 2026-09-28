@@ -197,6 +197,53 @@ def get_noticias():
     return jsonify(cached("noticias", 900, traer) or [])
 
 
+@app.get("/api/screener")
+@require_auth
+def get_screener():
+    """Oportunidades en 50 CEDEARs que no estás mirando."""
+    from iol_client import IOLClient
+    from screener import Screener
+
+    def correr():
+        d = db()
+        res = Screener({}).scan_cedear(IOLClient(), d.get_cedears())
+        return [r.__dict__ for r in res]
+
+    return jsonify(cached("screener", 3600, correr) or [])
+
+
+@app.get("/api/portfolio")
+@require_auth
+def get_portfolio_api():
+    """Posiciones con P&L calculado contra el precio actual."""
+    from portfolio import PortfolioTracker
+
+    d = db()
+    tracker = PortfolioTracker(d)
+    posiciones = tracker.get_positions()
+    if not posiciones:
+        return jsonify({"posiciones": [], "total": None})
+
+    # Reusa los precios del snapshot en vez de volver a pedirlos
+    precios = {s["ticker"]: float(s["precio"]) for s in (d.get_snapshots() or [])
+               if s.get("precio")}
+    pnl = tracker.calculate_pnl(posiciones, precios)
+
+    invertido = sum(float(p.get("cantidad", 0)) * float(p.get("precio_entrada", 0))
+                    for p in pnl if p.get("precio_entrada"))
+    actual = sum(float(p.get("cantidad", 0)) * float(p.get("precio_actual", 0))
+                 for p in pnl if p.get("precio_actual"))
+    total = None
+    if invertido > 0:
+        total = {
+            "invertido": round(invertido, 2),
+            "actual": round(actual, 2),
+            "pnl_abs": round(actual - invertido, 2),
+            "pnl_pct": round((actual / invertido - 1) * 100, 2),
+        }
+    return jsonify({"posiciones": pnl, "total": total})
+
+
 # ─── Arranque ────────────────────────────────────────────────────────────
 
 def serve():

@@ -50,6 +50,13 @@ def main():
     except Exception as e:
         logger.error(f"No se pudo levantar el panel web: {e}")
 
+    # Confirma que Yahoo (fundamentales y series) es alcanzable desde aqui
+    try:
+        import market_data
+        market_data.autotest()
+    except Exception as e:
+        logger.error(f"market_data no disponible: {e}")
+
     # Sonda de diagnóstico IOL (solo con IOL_DIAG=1)
     if os.environ.get("IOL_DIAG") == "1":
         try:

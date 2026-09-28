@@ -190,6 +190,66 @@ PESOS = {
 }
 
 
+def _tendencias_por_plazo(closes: list[float], precio: float) -> dict:
+    """
+    Separa la tendencia en tres horizontes. Un papel puede estar
+    corrigiendo en el corto dentro de una tendencia larga alcista:
+    eso es una compra, no una venta, y con un solo dato se pierde.
+    """
+    out = {}
+    ema9, ema21 = _ema(closes, 9), _ema(closes, 21)
+    sma50, sma200 = _sma(closes, 50), _sma(closes, 200)
+
+    if ema9 and ema21:
+        out["corto"] = "alcista" if ema9[-1] > ema21[-1] else "bajista"
+    if sma50:
+        out["medio"] = "alcista" if precio > sma50 else "bajista"
+    if sma200:
+        out["largo"] = "alcista" if precio > sma200 else "bajista"
+        if sma50:
+            out["cruce"] = "dorado" if sma50 > sma200 else "muerte"
+
+    votos = [v for k, v in out.items() if k in ("corto", "medio", "largo")]
+    if votos:
+        alcistas = votos.count("alcista")
+        if alcistas == len(votos):
+            out["alineacion"] = "todo alcista"
+        elif alcistas == 0:
+            out["alineacion"] = "todo bajista"
+        else:
+            out["alineacion"] = "mixta"
+    return out
+
+
+def _caja_riesgo(precio: float, atr: float | None, soporte: float | None,
+                 resistencia: float | None) -> dict:
+    """
+    Stop sugerido a 2 ATR (o bajo el soporte, lo que esté más cerca) y
+    relación riesgo/beneficio hasta la resistencia. Sin esto no se puede
+    dimensionar una posición.
+    """
+    if not precio or not atr:
+        return {}
+    stop_atr = precio - 2 * atr
+    stop = max(stop_atr, soporte * 0.99) if soporte and soporte < precio else stop_atr
+    if stop <= 0 or stop >= precio:
+        return {}
+
+    riesgo_pct = (precio - stop) / precio * 100
+    out = {
+        "stop_sugerido": round(stop, 2),
+        "riesgo_pct": round(riesgo_pct, 2),
+    }
+    if resistencia and resistencia > precio:
+        beneficio = resistencia - precio
+        riesgo = precio - stop
+        out["objetivo"] = round(resistencia, 2)
+        out["beneficio_pct"] = round(beneficio / precio * 100, 2)
+        if riesgo > 0:
+            out["ratio_rb"] = round(beneficio / riesgo, 2)
+    return out
+
+
 def _clasificar(score: float) -> tuple[str, str]:
     """Mapea el puntaje ponderado a señal y fuerza."""
     if score >= 4.5:
@@ -425,16 +485,43 @@ class Analyzer:
                 score -= p
                 motivos.append(f"Cerca del máximo del período ({rango['dist_maximo_pct']:+.1f}%)")
 
-        # ── Volatilidad (informativa, no puntúa) ─────────────────────────
+        # ── Volatilidad ──────────────────────────────────────────────────
         atr = _atr(highs, lows, closes)
         if atr:
             ind["atr"] = round(atr[0], 2)
             ind["atr_pct"] = round(atr[1], 2)
 
-        # ── Soporte y resistencia (informativo) ──────────────────────────
+        # ── Soporte y resistencia ────────────────────────────────────────
         sr = _soporte_resistencia(highs, lows, closes)
         if sr:
             ind.update(sr)
+
+        # ── Tendencia por plazo ──────────────────────────────────────────
+        tend = _tendencias_por_plazo(closes, precio)
+        if tend:
+            ind["tendencias"] = tend
+            if tend.get("alineacion") == "todo alcista":
+                motivos.append("Tendencia alineada al alza en los tres plazos")
+            elif tend.get("alineacion") == "todo bajista":
+                motivos.append("Tendencia alineada a la baja en los tres plazos")
+            elif tend.get("corto") == "alcista" and tend.get("largo") == "alcista" \
+                    and tend.get("medio") == "bajista":
+                motivos.append("Corrección dentro de una tendencia larga alcista")
+
+        # ── Caja de riesgo ───────────────────────────────────────────────
+        riesgo = _caja_riesgo(
+            precio,
+            atr[0] if atr else None,
+            ind.get("soporte"),
+            ind.get("resistencia"),
+        )
+        if riesgo:
+            ind["riesgo"] = riesgo
+            rb = riesgo.get("ratio_rb")
+            if rb and rb >= 2:
+                motivos.append(f"Relación riesgo/beneficio favorable ({rb:.1f} a 1)")
+            elif rb and rb < 1:
+                motivos.append(f"Relación riesgo/beneficio pobre ({rb:.1f} a 1)")
 
         # ── Volumen ──────────────────────────────────────────────────────
         if volumes and len(volumes) >= 20:

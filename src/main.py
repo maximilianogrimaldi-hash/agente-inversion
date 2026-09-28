@@ -41,6 +41,43 @@ def _load_config(db: SupabaseClient) -> dict:
     return config
 
 
+def _enriquecer(sig, tipo: str) -> None:
+    """
+    Suma al snapshot lo que el análisis técnico no ve: fundamentales del
+    subyacente, fuerza relativa contra el índice y la serie para graficar.
+    Si Yahoo no responde, la señal técnica sigue sirviendo igual.
+    """
+    if sig is None:
+        return
+    try:
+        import market_data as md
+
+        fund = md.get_fundamentals(sig.ticker, tipo)
+        if fund:
+            sig.indicadores["fundamentales"] = fund
+            # Un balance inminente cambia el riesgo de cualquier entrada
+            dias = fund.get("dias_al_balance")
+            if dias is not None and 0 <= dias <= 7:
+                sig.motivos.append(f"Presenta balance en {dias} días")
+
+        rs = md.fuerza_relativa(sig.ticker, tipo)
+        if rs:
+            sig.indicadores["fuerza_relativa"] = rs
+            r21 = rs.get("rs_21")
+            if r21 is not None:
+                if r21 > 5:
+                    sig.motivos.append(f"Le gana al índice por {r21:+.1f}% en un mes")
+                elif r21 < -5:
+                    sig.motivos.append(f"Pierde contra el índice por {r21:+.1f}% en un mes")
+
+        serie = md.get_series(sig.ticker, tipo)
+        if serie and serie.get("closes"):
+            # Solo lo necesario para dibujar: 120 cierres
+            sig.indicadores["serie"] = [round(c, 4) for c in serie["closes"][-120:]]
+    except Exception as e:
+        logger.debug(f"Enriquecimiento {sig.ticker}: {e}")
+
+
 def run_cycle():
     logger.info("=== Iniciando ciclo de analisis ===")
     db = SupabaseClient()
@@ -66,6 +103,7 @@ def run_cycle():
                     if precio > 0:
                         current_prices[ticker] = precio
                     if sig:
+                        _enriquecer(sig, "CEDEAR")
                         db.save_snapshot(sig.__dict__)
                     if sig and sig.senal not in ("NEUTRAL",):
                         if db.alert_already_sent(ticker, sig.senal, dedup_minutes):
@@ -94,6 +132,7 @@ def run_cycle():
                     if ticker_24h.get("price"):
                         current_prices[symbol] = ticker_24h["price"]
                     if sig:
+                        _enriquecer(sig, "CRYPTO")
                         db.save_snapshot(sig.__dict__)
                     if sig and sig.senal not in ("NEUTRAL",):
                         if db.alert_already_sent(symbol, sig.senal, dedup_minutes):
