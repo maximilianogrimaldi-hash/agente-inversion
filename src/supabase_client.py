@@ -98,7 +98,7 @@ class SupabaseClient:
             "variacion_pct": data.get("variacion_pct"),
             "motivos": data.get("motivos", []),
             "indicadores": data.get("indicadores", {}),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "creado_en": datetime.now(timezone.utc).isoformat(),
         }
         return self._post("alertas", payload)
 
@@ -107,7 +107,7 @@ class SupabaseClient:
         rows = self._get("alertas", {
             "ticker": f"eq.{ticker}",
             "senal": f"eq.{senal}",
-            "created_at": f"gte.{cutoff}",
+            "creado_en": f"gte.{cutoff}",
             "select": "id",
             "limit": "1",
         })
@@ -118,8 +118,8 @@ class SupabaseClient:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
         return self._get("alertas", {
             "select": "*",
-            "created_at": f"gte.{cutoff}",
-            "order": "created_at.desc",
+            "creado_en": f"gte.{cutoff}",
+            "order": "creado_en.desc",
             "limit": "200",
         })
 
