@@ -184,3 +184,19 @@ def get_multiple_tickers(symbols: list[str]) -> dict[str, dict]:
                 "low":          float(coin.get("low_24h") or 0),
             }
     return result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Clase de compatibilidad — main.py hace BinanceClient() como antes
+# ──────────────────────────────────────────────────────────────────────────────
+class BinanceClient:
+    """Wrapper para mantener compatibilidad con el codigo que usa BinanceClient()."""
+
+    def get_ticker_24h(self, symbol: str) -> dict:
+        return get_ticker_24h(symbol)
+
+    def get_klines(self, symbol: str, interval: str = "1h", limit: int = 50) -> list[dict]:
+        return get_klines(symbol, interval, limit)
+
+    def get_multiple_tickers(self, symbols: list[str]) -> dict[str, dict]:
+        return get_multiple_tickers(symbols)
