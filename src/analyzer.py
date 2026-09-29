@@ -2,12 +2,16 @@
 Analyzer — Motor de señales técnicas.
 
 Indicadores: RSI(14), EMA(9/21), SMA(50/200), MACD(12/26/9),
-Bandas de Bollinger(20,2), ATR(14), momentum 5d/20d, posición en el
-rango del período, soporte/resistencia y volumen.
+Bandas de Bollinger(20,2), ATR(14), momentum 5d/20d, soporte/resistencia,
+pendiente de medias, volumen vs promedio y distancia desde máximos.
 
 El puntaje es ponderado por confluencia: cada familia de indicadores
 aporta como máximo su peso, así que FUERTE significa que varias
 señales independientes coinciden, no que una sola se disparó.
+
+Semáforo por familia (verde/amarillo/rojo) más condiciones explícitas
+de confirmación para que el sistema distinga "corrección recuperable"
+de "ruptura de estructura".
 """
 
 import logging
@@ -26,6 +30,8 @@ class Signal:
     fuerza: str         # FUERTE | MODERADA | DEBIL
     motivos: list[str] = field(default_factory=list)
     indicadores: dict = field(default_factory=dict)
+    # Tipo de alerta para distinguir corrección vs ruptura estructural
+    tipo_senal: str = "tecnica"  # "tecnica" | "cartera"
 
 
 # ─── Primitivas ──────────────────────────────────────────────────────────
@@ -70,7 +76,6 @@ def _macd(closes: list[float], fast: int = 12, slow: int = 26, signal: int = 9):
     ema_slow = _ema(closes, slow)
     if not ema_fast or not ema_slow:
         return None
-    # Alinear: ema_fast arranca antes, recortar por la cola
     n = min(len(ema_fast), len(ema_slow))
     macd_line = [ema_fast[-n:][i] - ema_slow[-n:][i] for i in range(n)]
     signal_line = _ema(macd_line, signal)
@@ -175,13 +180,161 @@ def _soporte_resistencia(highs: list[float], lows: list[float], closes: list[flo
     return out or None
 
 
+def _pendiente(values: list[float], period: int) -> float | None:
+    """Pendiente lineal normalizada sobre el período (% por vela)."""
+    if len(values) < period:
+        return None
+    seg = values[-period:]
+    n = len(seg)
+    x_mean = (n - 1) / 2
+    y_mean = sum(seg) / n
+    num = sum((i - x_mean) * (seg[i] - y_mean) for i in range(n))
+    den = sum((i - x_mean) ** 2 for i in range(n))
+    if den == 0 or y_mean == 0:
+        return None
+    return round(num / den / y_mean * 100, 3)  # %/vela
+
+
+def _distancia_maximos(closes: list[float]):
+    """Distancia desde el máximo en distintos períodos."""
+    precio = closes[-1]
+    if precio == 0:
+        return {}
+    out = {}
+    for periodo, label in [(252, "52s"), (126, "6m"), (63, "3m")]:
+        seg = closes[-periodo:] if len(closes) >= periodo else closes
+        mx = max(seg)
+        if mx > 0:
+            dist = (precio - mx) / mx * 100
+            out[f"dist_max_{label}"] = round(dist, 1)
+    return out
+
+
+def _semaforo_bloques(ind: dict, senal: str) -> dict:
+    """
+    Semáforo por familia de indicadores: verde/amarillo/rojo.
+    Ayuda a ver de un vistazo cuántas familias coinciden.
+    """
+    s = {}
+
+    # Tendencia
+    tend = ind.get("tendencias", {})
+    al = tend.get("alineacion", "")
+    if al == "todo alcista":
+        s["tendencia"] = "verde"
+    elif al == "todo bajista":
+        s["tendencia"] = "rojo"
+    elif al == "mixta":
+        s["tendencia"] = "amarillo"
+    else:
+        s["tendencia"] = "gris"
+
+    # RSI
+    rsi = ind.get("rsi")
+    if rsi is not None:
+        if rsi < 30:
+            s["rsi"] = "verde"
+        elif rsi > 70:
+            s["rsi"] = "rojo"
+        elif 40 <= rsi <= 60:
+            s["rsi"] = "amarillo"
+        else:
+            s["rsi"] = "verde" if rsi < 50 else "rojo"
+
+    # MACD
+    hist = ind.get("macd_hist")
+    if hist is not None:
+        s["macd"] = "verde" if hist > 0 else "rojo"
+
+    # Bollinger
+    pct_b = ind.get("bb_pct")
+    if pct_b is not None:
+        if pct_b < 20:
+            s["bollinger"] = "verde"
+        elif pct_b > 80:
+            s["bollinger"] = "rojo"
+        else:
+            s["bollinger"] = "amarillo"
+
+    # Volumen
+    vr = ind.get("vol_ratio")
+    if vr is not None:
+        s["volumen"] = "verde" if vr >= 1.5 else ("amarillo" if vr >= 0.8 else "rojo")
+
+    # Soporte/resistencia
+    soporte = ind.get("soporte")
+    resistencia = ind.get("resistencia")
+    if soporte or resistencia:
+        dist_s = ind.get("dist_soporte_pct", 999)
+        dist_r = ind.get("dist_resistencia_pct", 999)
+        if dist_s < 2:
+            s["soportes"] = "verde"   # muy cerca del soporte = oportunidad
+        elif dist_r < 2:
+            s["soportes"] = "rojo"    # muy cerca de resistencia = techo
+        else:
+            s["soportes"] = "amarillo"
+
+    return s
+
+
+def _condiciones_confirmacion(ind: dict, senal: str) -> list[str]:
+    """
+    Condiciones explícitas que, si se cumplen, confirmarían o invalidarían la señal.
+    Cruciales para no entrar antes de tiempo.
+    """
+    conds = []
+    tend = ind.get("tendencias", {})
+    rsi = ind.get("rsi")
+    macd_hist = ind.get("macd_hist")
+    soporte = ind.get("soporte")
+    resistencia = ind.get("resistencia")
+    vr = ind.get("vol_ratio", 1)
+    ema21 = ind.get("ema21")
+    sma200 = ind.get("sma200")
+    precio = ind.get("precio_actual")
+
+    if senal == "BUY":
+        if tend.get("corto") == "bajista":
+            conds.append("⏳ Esperar cruce alcista EMA9/EMA21 en vela diaria")
+        if rsi and rsi > 60:
+            conds.append("⏳ RSI sobre 60 — esperar pullback antes de entrar")
+        if macd_hist and macd_hist < 0:
+            conds.append("⏳ MACD aún negativo — confirmar giro del histograma")
+        if resistencia:
+            dist_r = ind.get("dist_resistencia_pct", 0)
+            conds.append(f"🎯 Resistencia en ${resistencia} ({dist_r:+.1f}%) — tomar ganancia ahí")
+        if vr < 1.0:
+            conds.append("⏳ Volumen bajo promedio — buscar confirmación con volumen")
+        if not conds:
+            conds.append("✅ Señal con múltiple confluencia — puede entrar con stop definido")
+
+    elif senal == "SELL":
+        if tend.get("corto") == "alcista":
+            conds.append("⏳ Esperar confirmación bajista — EMA9 aún sobre EMA21")
+        if rsi and rsi < 40:
+            conds.append("⏳ RSI muy bajo — posible rebote técnico antes de continuar")
+        if macd_hist and macd_hist > 0:
+            conds.append("⏳ MACD aún positivo — confirmar cruce bajista")
+        if soporte:
+            dist_s = ind.get("dist_soporte_pct", 0)
+            conds.append(f"🛡️ Soporte en ${soporte} ({dist_s:.1f}% abajo) — posible rebote")
+        if not conds:
+            conds.append("⚠️ Señal de venta confirmada — considerar reducir exposición")
+
+    elif senal == "WATCH":
+        conds.append("👀 Monitorear: todavía no hay señal clara")
+        if tend.get("alineacion") == "mixta":
+            conds.append("↔️ Tendencia mixta — esperar alineación de medias")
+
+    return conds[:4]  # máximo 4 condiciones
+
+
 # ─── Puntaje ─────────────────────────────────────────────────────────────
 
-# Cada familia aporta como máximo su peso. La escala final es -10..+10.
 PESOS = {
     "rsi": 2.5,
     "macd": 2.0,
-    "tendencia": 2.0,   # EMA9/21 + SMA50/200
+    "tendencia": 2.0,
     "bollinger": 1.5,
     "momentum": 1.5,
     "rango": 1.0,
@@ -192,9 +345,8 @@ PESOS = {
 
 def _tendencias_por_plazo(closes: list[float], precio: float) -> dict:
     """
-    Separa la tendencia en tres horizontes. Un papel puede estar
-    corrigiendo en el corto dentro de una tendencia larga alcista:
-    eso es una compra, no una venta, y con un solo dato se pierde.
+    Separa la tendencia en tres horizontes e incluye la pendiente
+    de cada media para saber si está acelerando o frenando.
     """
     out = {}
     ema9, ema21 = _ema(closes, 9), _ema(closes, 21)
@@ -202,10 +354,19 @@ def _tendencias_por_plazo(closes: list[float], precio: float) -> dict:
 
     if ema9 and ema21:
         out["corto"] = "alcista" if ema9[-1] > ema21[-1] else "bajista"
+        out["ema9_v"] = round(ema9[-1], 2)
+        out["ema21_v"] = round(ema21[-1], 2)
+
     if sma50:
         out["medio"] = "alcista" if precio > sma50 else "bajista"
+        out["sma50_v"] = round(sma50, 2)
+        pend50 = _pendiente([_sma(closes[:-i] if i else closes, 50) or 0 for i in range(10, -1, -1)], 10)
+        if pend50 is not None:
+            out["sma50_pendiente"] = pend50
+
     if sma200:
         out["largo"] = "alcista" if precio > sma200 else "bajista"
+        out["sma200_v"] = round(sma200, 2)
         if sma50:
             out["cruce"] = "dorado" if sma50 > sma200 else "muerte"
 
@@ -225,8 +386,7 @@ def _caja_riesgo(precio: float, atr: float | None, soporte: float | None,
                  resistencia: float | None) -> dict:
     """
     Stop sugerido a 2 ATR (o bajo el soporte, lo que esté más cerca) y
-    relación riesgo/beneficio hasta la resistencia. Sin esto no se puede
-    dimensionar una posición.
+    relación riesgo/beneficio hasta la resistencia.
     """
     if not precio or not atr:
         return {}
@@ -248,6 +408,60 @@ def _caja_riesgo(precio: float, atr: float | None, soporte: float | None,
         if riesgo > 0:
             out["ratio_rb"] = round(beneficio / riesgo, 2)
     return out
+
+
+def _es_senal_cartera(ind: dict, senal: str) -> bool:
+    """
+    Distingue 'señal técnica' (corrección recuperable) de 'señal de cartera'
+    (ruptura estructural que requiere acción urgente en el portfolio).
+
+    Una ruptura estructural requiere que MÚLTIPLES condiciones clave fallen
+    simultáneamente, no que una sola señal sea negativa.
+    """
+    if senal not in ("BUY", "SELL"):
+        return False
+
+    tend = ind.get("tendencias", {})
+    sma200 = ind.get("sma200")
+    soporte = ind.get("soporte")
+    resistencia = ind.get("resistencia")
+    precio = ind.get("precio_actual", 0)
+    vr = ind.get("vol_ratio", 1)
+    rsi = ind.get("rsi", 50)
+
+    if senal == "SELL":
+        condiciones = 0
+        # Rompió SMA200 (tendencia de fondo perdida)
+        if sma200 and precio and precio < sma200 * 0.99:
+            condiciones += 1
+        # Rompió soporte importante
+        if soporte and precio and precio < soporte * 0.98:
+            condiciones += 1
+        # Volumen elevado (la ruptura es real, no fake)
+        if vr and vr >= 1.5:
+            condiciones += 1
+        # RSI saliendo de sobrecompra con momentum negativo
+        if rsi and rsi < 45 and tend.get("alineacion") == "todo bajista":
+            condiciones += 1
+        return condiciones >= 2  # Al menos 2 condiciones = ruptura estructural
+
+    elif senal == "BUY":
+        condiciones = 0
+        # Recuperó SMA200
+        if sma200 and precio and precio > sma200 * 1.005:
+            condiciones += 1
+        # Rebotó en soporte con volumen
+        if soporte and precio and abs(precio - soporte) / precio < 0.02:
+            condiciones += 1
+        # Volumen confirmando
+        if vr and vr >= 1.5:
+            condiciones += 1
+        # RSI saliendo de sobreventa con momentum positivo
+        if rsi and rsi < 40 and tend.get("alineacion") in ("todo alcista", "mixta"):
+            condiciones += 1
+        return condiciones >= 2
+
+    return False
 
 
 def _clasificar(score: float) -> tuple[str, str]:
@@ -344,6 +558,9 @@ class Analyzer:
         motivos: list[str] = []
         ind: dict = {}
 
+        # Guardamos el precio actual para funciones auxiliares
+        ind["precio_actual"] = precio
+
         # ── RSI ──────────────────────────────────────────────────────────
         rsi = _rsi(closes)
         if rsi is not None:
@@ -398,10 +615,8 @@ class Analyzer:
                 motivos.append("Cruce bajista EMA9/EMA21")
             elif ema9_v[-1] > ema21_v[-1]:
                 sub += 0.25
-                motivos.append("EMA9 sobre EMA21 (corto plazo al alza)")
             else:
                 sub -= 0.25
-                motivos.append("EMA9 bajo EMA21 (corto plazo a la baja)")
 
         sma50, sma200 = _sma(closes, 50), _sma(closes, 200)
         if sma50:
@@ -508,6 +723,17 @@ class Analyzer:
                     and tend.get("medio") == "bajista":
                 motivos.append("Corrección dentro de una tendencia larga alcista")
 
+        # ── Distancia desde máximos ──────────────────────────────────────
+        dist_max = _distancia_maximos(closes)
+        if dist_max:
+            ind.update(dist_max)
+            # Señalar oportunidades de caídas profundas
+            d52s = dist_max.get("dist_max_52s")
+            if d52s is not None and d52s <= -30:
+                motivos.append(f"Cayó {abs(d52s):.0f}% desde máximo de 52 semanas")
+            elif d52s is not None and -5 <= d52s <= 0:
+                motivos.append(f"Cerca del máximo de 52 semanas ({d52s:+.1f}%)")
+
         # ── Caja de riesgo ───────────────────────────────────────────────
         riesgo = _caja_riesgo(
             precio,
@@ -532,7 +758,6 @@ class Analyzer:
                 if ratio > self.volume_spike_mult:
                     p = PESOS["volumen"]
                     motivos.append(f"Volumen {ratio:.1f}x el promedio de 20 velas")
-                    # El volumen confirma la dirección que ya traía el puntaje
                     score += p if score > 0 else (-p if score < 0 else 0)
 
         # ── Variación de la sesión ───────────────────────────────────────
@@ -554,6 +779,17 @@ class Analyzer:
         ind["senal"] = senal
         ind["fuerza"] = fuerza
 
+        # ── Semáforo por familia ─────────────────────────────────────────
+        ind["semaforo"] = _semaforo_bloques(ind, senal)
+
+        # ── Condiciones de confirmación ───────────────────────────────────
+        ind["confirmacion"] = _condiciones_confirmacion(ind, senal)
+
+        # ── Tipo de señal: técnica vs cartera ────────────────────────────
+        es_cartera = _es_senal_cartera(ind, senal)
+        tipo_senal = "cartera" if es_cartera else "tecnica"
+        ind["tipo_senal"] = tipo_senal
+
         if not motivos:
             motivos.append("Sin factores destacados")
 
@@ -566,4 +802,5 @@ class Analyzer:
             fuerza=fuerza,
             motivos=motivos,
             indicadores=ind,
+            tipo_senal=tipo_senal,
         )
