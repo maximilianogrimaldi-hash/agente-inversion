@@ -121,6 +121,24 @@ section{min-width:0}
 .card-news a:hover{color:var(--accent); text-decoration:underline}
 .when{font-family:var(--font-mono); font-size:10px; color:var(--ink-faint); margin-top:8px}
 
+/* ── Semáforos globales ─────────────────────────────────── */
+.semaforos-globales{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px}
+.sg{display:flex; flex-direction:column; align-items:center; padding:10px 16px; border-radius:10px; background:var(--surface); border:1px solid var(--line); min-width:90px; gap:3px}
+.sg-luz{font-size:28px; line-height:1}
+.sg-lbl{font-size:9.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-faint)}
+.sg-cnt{font-family:var(--font-mono); font-size:10px; color:var(--ink-soft)}
+.sg.verde{border-color:var(--buy); background:var(--buy-bg)}
+.sg.rojo{border-color:var(--sell); background:var(--sell-bg)}
+.sg.amarillo{border-color:var(--watch); background:var(--watch-bg)}
+
+/* Plazos en tarjeta ────────────────────────────────────── */
+.plazos-card{display:flex; gap:5px; align-items:center; margin-top:6px}
+.pz{display:inline-flex; align-items:center; gap:3px; font-size:10px; font-family:var(--font-mono); padding:2px 7px; border-radius:4px; background:var(--neutral-bg); color:var(--ink-soft)}
+.pz .dot-pz{width:7px;height:7px;border-radius:50%;display:inline-block}
+.pz.buy-pz{background:var(--buy-bg); color:var(--buy)}
+.pz.sell-pz{background:var(--sell-bg); color:var(--sell)}
+.pz.watch-pz{background:var(--watch-bg); color:var(--watch)}
+
 /* ── Lateral ────────────────────────────────────────────── */
 .addbar{display:flex; gap:7px; margin-bottom:12px; flex-wrap:wrap}
 .addbar input{flex:1 1 100px; min-width:0; font-family:var(--font-mono); font-size:14px; text-transform:uppercase; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink)}
@@ -162,6 +180,8 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
     </div>
   </div>
 </header>
+
+<div id="semaforos-globales" class="semaforos-globales"></div>
 
 <div class="grid">
   <section>
@@ -288,6 +308,29 @@ function tarjeta(s){
       ${f.nombre?`<span class="nombre">${esc(f.nombre)}</span>`:""}
     </div>
 
+    ${(()=>{
+      // CP = RSI + MACD + volumen  |  MP = tendencia 1D + BB + soportes  |  LP = tendencia semanal + dist_max_52s + fundamentales
+      const sem=i.semaforo||{};
+      function calcPlazo(keys){
+        let v=0,r=0,a=0;
+        keys.forEach(k=>{const s=sem[k]; if(s==="verde") v++; else if(s==="rojo") r++; else if(s==="amarillo") a++;});
+        if(!v&&!r&&!a) return null;
+        if(v>r) return "buy"; if(r>v) return "sell"; return "watch";
+      }
+      const cp=calcPlazo(["rsi","macd","volumen"]);
+      const mp=calcPlazo(["tendencia","bollinger","soportes"]);
+      // LP: tendencia semanal + dist_max_52s proxy + fundamentales (si tiene precio objetivo alcista)
+      let lpBuy=0,lpSell=0;
+      const ts=i.tendencia_semanal||{};
+      if(ts.alineacion){if(ts.alineacion.includes("alcist")) lpBuy++; else if(ts.alineacion.includes("bajist")) lpSell++;}
+      if(i.dist_max_52s!=null){if(i.dist_max_52s>-10) lpBuy++; else lpSell++;}
+      if(f.potencial_pct!=null){if(f.potencial_pct>0) lpBuy++; else lpSell++;}
+      const lp=lpBuy>lpSell?"buy":lpSell>lpBuy?"sell":lpBuy>0?"watch":null;
+      const tag=(lbl,st)=>{if(!st) return ""; const cls=st==="buy"?"buy-pz":st==="sell"?"sell-pz":"watch-pz"; const dot=st==="buy"?"var(--buy)":st==="sell"?"var(--sell)":"var(--watch)"; return `<span class="pz ${cls}"><span class="dot-pz" style="background:${dot}"></span>${lbl}</span>`;};
+      const tags=[tag("CP",cp),tag("MP",mp),tag("LP",lp)].filter(Boolean).join("");
+      return tags ? `<div class="plazos-card">${tags}</div>` : "";
+    })()}
+
     ${i.serie ? `<div class="chart">${sparkline(i.serie)}
       <div class="chart-pie"><span>hace 6 meses</span><span>hoy</span></div></div>` : ""}
 
@@ -371,6 +414,44 @@ function tarjeta(s){
   </article>`;
 }
 
+function calcSemaforoGlobal(snaps, keys){
+  let buy=0, sell=0, watch=0;
+  for(const s of snaps){
+    const sem=(s.indicadores||{}).semaforo||{};
+    let v=0,r=0,a=0;
+    keys.forEach(k=>{const sv=sem[k]; if(sv==="verde") v++; else if(sv==="rojo") r++; else if(sv==="amarillo") a++;});
+    if(v>r) buy++; else if(r>v) sell++; else if(v||r||a) watch++;
+  }
+  const total=buy+sell+watch;
+  if(!total) return null;
+  const estado=buy>sell?"verde":sell>buy?"rojo":"amarillo";
+  return {estado, buy, sell, watch, total};
+}
+
+function renderSemaforosGlobales(){
+  const box=document.getElementById("semaforos-globales");
+  if(!box||!snaps.length){if(box) box.innerHTML=""; return;}
+  const CP=calcSemaforoGlobal(snaps,["rsi","macd","volumen"]);
+  const MP=calcSemaforoGlobal(snaps,["tendencia","bollinger","soportes"]);
+  // LP: calcular desde datos directos
+  let lpBuy=0,lpSell=0,lpWatch=0;
+  for(const s of snaps){
+    const i=s.indicadores||{}, f=i.fundamentales||{};
+    let v=0,r=0;
+    const ts=i.tendencia_semanal||{};
+    if(ts.alineacion){if(ts.alineacion.includes("alcist")) v++; else if(ts.alineacion.includes("bajist")) r++;}
+    if(i.dist_max_52s!=null){if(i.dist_max_52s>-10) v++; else r++;}
+    if(f.potencial_pct!=null){if(f.potencial_pct>0) v++; else r++;}
+    if(v>r) lpBuy++; else if(r>v) lpSell++; else if(v||r) lpWatch++;
+  }
+  const lpTotal=lpBuy+lpSell+lpWatch;
+  const LP=lpTotal?{estado:lpBuy>lpSell?"verde":lpSell>lpBuy?"rojo":"amarillo",buy:lpBuy,sell:lpSell,watch:lpWatch,total:lpTotal}:null;
+
+  const luz=e=>e==="verde"?"🟢":e==="rojo"?"🔴":"🟡";
+  const sg=(lbl,d)=>{if(!d) return ""; return `<div class="sg ${d.estado}"><div class="sg-luz">${luz(d.estado)}</div><div class="sg-lbl">${lbl}</div><div class="sg-cnt">${d.buy}↑ ${d.sell}↓ ${d.watch}~</div></div>`;};
+  box.innerHTML=sg("Corto plazo",CP)+sg("Mediano plazo",MP)+sg("Largo plazo",LP);
+}
+
 function render(){
   const box=document.getElementById("cards");
   let lista=snaps;
@@ -382,6 +463,7 @@ function render(){
   }
   lista=[...lista].sort((a,b)=>Math.abs(Number(b.score||0))-Math.abs(Number(a.score||0)));
   box.innerHTML=lista.map(tarjeta).join("");
+  renderSemaforosGlobales();
 }
 
 // ── Cargas ─────────────────────────────────────────────────
