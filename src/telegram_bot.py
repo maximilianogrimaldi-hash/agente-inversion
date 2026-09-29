@@ -63,34 +63,122 @@ class TelegramBot:
                 return f"${precio:.6f}"
         return f"${precio:,.2f}"
 
+    @staticmethod
+    def _semaforo_str(bloque: dict) -> str:
+        """Convierte dict semaforo en string visual."""
+        SEM = {"verde": "🟢", "amarillo": "🟡", "rojo": "🔴"}
+        parts = []
+        labels = {
+            "tendencia": "Tend",
+            "rsi": "RSI",
+            "macd": "MACD",
+            "bollinger": "BB",
+            "volumen": "Vol",
+            "soportes": "Sop",
+        }
+        for k, label in labels.items():
+            v = bloque.get(k)
+            if v:
+                parts.append(f"{SEM.get(v, '⚪')} {label}")
+        return "  ".join(parts) if parts else ""
+
     def format_signal(self, sig: Signal) -> str:
         emoji = self._emoji_senal(sig.senal, sig.fuerza)
         tipo_emoji = self._emoji_tipo(sig.tipo)
         precio_str = self._format_price(sig.precio, sig.tipo)
         var_str = f"{sig.variacion_pct:+.2f}%" if sig.variacion_pct else "N/A"
-        motivos_str = "\n".join(f"  • {m}" for m in sig.motivos)
-        indicadores_parts = []
         ind = sig.indicadores
-        if "rsi" in ind:
-            indicadores_parts.append(f"RSI: {ind['rsi']}")
-        if "ema_short" in ind and "ema_long" in ind:
-            indicadores_parts.append(f"EMA9: {ind['ema_short']} | EMA21: {ind['ema_long']}")
-        if "vol_ratio" in ind:
-            indicadores_parts.append(f"Vol ratio: x{ind['vol_ratio']}")
-        if "cambio_ultima_vela" in ind:
-            indicadores_parts.append(f"Ultima vela: {ind['cambio_ultima_vela']:+.2f}%")
-        indicadores_str = " · ".join(indicadores_parts)
-        msg = (
-            f"{emoji} <b>{sig.senal} {sig.fuerza}</b> - {tipo_emoji} {sig.ticker}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"\U0001f4b0 Precio: <b>{precio_str}</b>  ({var_str})\n"
-            f"\U0001f4ca Tipo: {sig.tipo}\n\n"
-            f"<b>Senales detectadas:</b>\n{motivos_str}\n\n"
-            f"<i>{indicadores_str}</i>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"\U0001f550 {datetime.utcnow().strftime('%H:%M UTC')} · <i>Solo informativo</i>"
-        )
-        return msg
+
+        # Tipo de señal
+        tipo_senal = getattr(sig, "tipo_senal", "tecnica")
+        if tipo_senal == "cartera":
+            badge = "🚨 <b>SEÑAL DE CARTERA</b> (ruptura estructural)"
+        else:
+            badge = "📡 Señal técnica"
+
+        # Header
+        lines = [
+            f"{emoji} <b>{sig.senal} {sig.fuerza}</b> — {tipo_emoji} <b>{sig.ticker}</b>",
+            f"{badge}",
+            f"━━━━━━━━━━━━━━━━━━━━",
+        ]
+
+        # Bloque 1: Precio
+        lines.append(f"💰 Precio: <b>{precio_str}</b>  ({var_str})")
+
+        # Bloque 2: Tendencia de fondo
+        td = ind.get("tendencia_diaria") or {}
+        ts = ind.get("tendencia_semanal") or {}
+        if td or ts:
+            lines.append("\n📈 <b>TENDENCIA</b>")
+            if td:
+                alin = td.get("alineacion", "")
+                sma50 = td.get("sma50_v")
+                sma200 = td.get("sma200_v")
+                pend = td.get("sma50_pendiente")
+                partes = [f"1D: {alin}"]
+                if sma50:
+                    partes.append(f"SMA50=${sma50:.2f}")
+                if sma200:
+                    partes.append(f"SMA200=${sma200:.2f}")
+                if pend is not None:
+                    partes.append(f"pend={pend:+.2f}%/v")
+                lines.append("  " + " · ".join(partes))
+            if ts:
+                alin_w = ts.get("alineacion", "")
+                lines.append(f"  1W: {alin_w}")
+
+        # Bloque 3: Niveles clave
+        sop = ind.get("soporte")
+        res = ind.get("resistencia")
+        p = sig.precio
+        if sop or res:
+            lines.append("\n🎯 <b>NIVELES CLAVE</b>")
+            if sop and p:
+                dist_s = (p / sop - 1) * 100
+                lines.append(f"  Soporte:     ${sop:.2f}  ({dist_s:+.1f}% desde precio)")
+            if res and p:
+                dist_r = (res / p - 1) * 100
+                lines.append(f"  Resistencia: ${res:.2f}  ({dist_r:+.1f}% desde precio)")
+
+        # Bloque 4: Volumen
+        vr = ind.get("vol_ratio")
+        if vr is not None:
+            vol_desc = "🔥 alto" if vr >= 1.5 else ("normal" if vr >= 0.8 else "⚠️ bajo")
+            lines.append(f"\n📊 <b>VOLUMEN</b>: x{vr:.1f} vs 20D  ({vol_desc})")
+
+        # Bloque 5: Distancia desde máximos
+        d52 = ind.get("dist_max_52s")
+        d6m = ind.get("dist_max_6m")
+        d3m = ind.get("dist_max_3m")
+        if d52 is not None:
+            lines.append(f"\n📉 <b>DESDE MÁXIMOS</b>: 52S={d52:+.1f}%"
+                         + (f"  6M={d6m:+.1f}%" if d6m is not None else "")
+                         + (f"  3M={d3m:+.1f}%" if d3m is not None else ""))
+
+        # Bloque 6: Semáforo por familia
+        sem = ind.get("semaforo") or {}
+        if sem:
+            lines.append(f"\n🚦 <b>SEMÁFORO</b>")
+            lines.append(f"  {self._semaforo_str(sem)}")
+
+        # Motivos detectados
+        if sig.motivos:
+            lines.append(f"\n🔍 <b>Señales detectadas:</b>")
+            for m in sig.motivos:
+                lines.append(f"  • {m}")
+
+        # Condiciones de confirmación
+        conf = ind.get("confirmacion") or []
+        if conf:
+            lines.append(f"\n✅ <b>Condiciones de confirmación:</b>")
+            for c in conf:
+                lines.append(f"  {c}")
+
+        lines.append(f"\n━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"🕐 {datetime.utcnow().strftime('%H:%M UTC')} · <i>Solo informativo</i>")
+
+        return "\n".join(lines)
 
     def send_signal(self, sig: Signal) -> bool:
         msg = self.format_signal(sig)
