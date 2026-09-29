@@ -253,7 +253,13 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
   </section>
 
   <section>
-    <div class="sec-head"><h2>Portfolio</h2><span class="count" id="pf-count"></span></div>
+    <div class="sec-head">
+      <h2>Mi Portfolio</h2>
+      <span class="count" id="pf-count"></span>
+      <button class="hbtn" id="btn-import-pf" title="Importar posiciones desde Excel de Balanz">📥 Excel</button>
+    </div>
+    <input type="file" id="pf-file-input" accept=".xlsx" hidden>
+    <div class="err" id="pf-import-err" hidden></div>
     <div id="portfolio"></div>
 
     <!-- Calendario de eventos -->
@@ -275,13 +281,30 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
     <div class="sec-head" style="margin-top:24px"><h2>Oportunidades</h2><span class="count">fuera de tu lista</span></div>
     <div id="screener"><div class="empty">Buscando…</div></div>
 
+    <!-- Modal de fundamentales -->
+    <div id="fund-modal" hidden style="position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);padding:16px">
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;padding:20px 22px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <span id="fund-tk" style="font-family:var(--font-mono);font-size:18px;font-weight:700"></span>
+          <span id="fund-badge" style="font-family:var(--font-mono);font-size:11px;font-weight:700;padding:4px 9px;border-radius:5px;letter-spacing:.05em"></span>
+          <span id="fund-score" style="font-size:11px;color:var(--ink-faint);margin-left:auto"></span>
+          <button onclick="cerrarFundamentales()" style="font-size:18px;line-height:1;padding:2px 6px;border-radius:5px;border:1px solid var(--line);background:var(--surface);cursor:pointer;color:var(--ink-soft)">✕</button>
+        </div>
+        <div id="fund-grafico" style="margin-bottom:12px"></div>
+        <div id="fund-razones" style="margin-bottom:10px"></div>
+        <div id="fund-riesgos" style="margin-bottom:10px"></div>
+        <div id="fund-datos" class="inds" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <div id="fund-loading" style="text-align:center;padding:24px;color:var(--ink-faint);font-size:13px">Cargando análisis…</div>
+      </div>
+    </div>
+
     <div class="sec-head" style="margin-top:24px"><h2>Noticias</h2></div>
     <div id="noticias"></div>
   </section>
 </div>
 
 <footer>
-  El agente revisa cada 15 minutos y alerta por Telegram. Lo que pausás acá deja de analizarse en el ciclo siguiente.<br>
+  El agente revisa cada 30 minutos y alerta por Telegram. Lo que pausás acá deja de analizarse en el ciclo siguiente.<br>
   El puntaje va de −10 a +10 y pondera RSI, MACD, tendencia, Bollinger, momentum, posición en el rango y volumen.
   Los fundamentales y el precio objetivo salen del papel en Nueva York, no del CEDEAR.<br>
   Nada de esto es una recomendación de inversión: son indicadores para que decidas vos.
@@ -799,7 +822,7 @@ async function cargarPortfolio(){
   try{
     const d=await api("portfolio");
     if(!d.posiciones.length){
-      box.innerHTML=`<div class="empty">Sin posiciones cargadas.</div>`;
+      box.innerHTML=`<div class="empty">Sin posiciones. Importá tu Excel de Balanz con el botón 📥.</div>`;
       document.getElementById("pf-count").textContent="";
       return;
     }
@@ -807,30 +830,177 @@ async function cargarPortfolio(){
     let h="";
     if(d.total){
       const cls=d.total.pnl_pct>=0?"up":"dn";
-      h+=`<div class="total"><span class="ctx-lbl">Valor actual</span>
+      h+=`<div class="total"><span class="ctx-lbl">Valor actual (ARS)</span>
         <div class="total-val">$${num(d.total.actual,0)}</div>
         <span class="ctx-sub ${cls}">${d.total.pnl_pct>=0?"+":""}${d.total.pnl_pct}% · $${num(d.total.pnl_abs,0)}</span></div>`;
     }
-    h+=`<div class="mini">`+d.posiciones.map(p=>{
+    h+=`<div class="mini">`;
+    for(const p of d.posiciones){
       const pc=p.pnl_pct;
-      return `<div class="mini-row"><span class="tk">${esc(p.ticker)}</span><span class="spacer"></span>
-        <span class="ind-val ${pc==null?"":pc>=0?"ok":"bad"}">${pc==null?"—":(pc>=0?"+":"")+pc+"%"}</span></div>`;
-    }).join("")+`</div>`;
+      const pclsCls=pc==null?"":pc>=0?"ok":"bad";
+      const rend=pc==null?"—":(pc>=0?"+":"")+num(pc,2)+"%";
+      const cant=p.cantidad!=null?num(p.cantidad,0)+"u":null;
+      const entrada=p.precio_entrada!=null?"$"+num(p.precio_entrada,0):null;
+      h+=`<div class="mini-row" style="flex-wrap:wrap;gap:4px;padding:8px 11px">
+        <span class="tk" style="min-width:60px">${esc(p.ticker)}</span>
+        ${cant?`<span style="font-size:11px;color:var(--ink-faint)">${cant}</span>`:""}
+        ${entrada?`<span style="font-size:11px;color:var(--ink-faint)">@${entrada}</span>`:""}
+        <span class="spacer"></span>
+        <span class="ind-val ${pclsCls}" style="font-family:var(--font-mono);font-size:12px">${rend}</span>
+        <button onclick="abrirFundamentales('${esc(p.ticker)}')" style="font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);cursor:pointer;white-space:nowrap">Ver →</button>
+      </div>`;
+    }
+    h+=`</div>`;
     box.innerHTML=h;
   }catch(e){ box.innerHTML=`<div class="empty">No pude leer el portfolio.</div>`; }
 }
+
+// Import Excel Balanz
+document.getElementById("btn-import-pf").addEventListener("click",()=>{
+  document.getElementById("pf-file-input").click();
+});
+document.getElementById("pf-file-input").addEventListener("change", async ev=>{
+  const file=ev.target.files[0]; if(!file) return;
+  const btn=document.getElementById("btn-import-pf");
+  const errEl=document.getElementById("pf-import-err");
+  btn.disabled=true; btn.textContent="Importando…"; errEl.hidden=true;
+  try{
+    const fd=new FormData(); fd.append("file",file);
+    const r=await fetch("/api/portfolio/import",{method:"POST",body:fd});
+    if(!r.ok){ let m=r.status; try{m=(await r.json()).error||m;}catch(_){} throw new Error(m); }
+    const res=await r.json();
+    errEl.hidden=false; errEl.style.background="var(--buy-bg)"; errEl.style.color="var(--buy)";
+    errEl.textContent=`✓ ${res.ok} posiciones importadas`+(res.errores?` (${res.errores} con error)`:"");
+    await cargarPortfolio();
+  }catch(e){
+    errEl.hidden=false; errEl.style.background="var(--sell-bg)"; errEl.style.color="var(--sell)";
+    errEl.textContent="Error al importar: "+e.message;
+  }
+  btn.disabled=false; btn.textContent="📥 Excel";
+  ev.target.value="";
+});
 
 async function cargarScreener(){
   const box=document.getElementById("screener");
   try{
     const r=await api("screener");
-    box.innerHTML=r.length ? `<div class="mini">`+r.slice(0,8).map(o=>`
-      <div class="mini-row"><span class="tk">${esc(o.ticker)}</span>
+    if(!r.length){ box.innerHTML=`<div class="empty">Sin candidatos destacados hoy.</div>`; return; }
+    let h=`<div class="mini">`;
+    for(const o of r.slice(0,8)){
+      const sc=Number(o.score_oportunidad).toFixed(1);
+      h+=`<div class="mini-row" style="padding:8px 11px;gap:6px">
+        <span class="tk">${esc(o.ticker)}</span>
         <span class="spacer"></span>
-        <span class="ind-val warn">${Number(o.score_oportunidad).toFixed(1)}</span></div>
-      <div style="font-size:11px;color:var(--ink-faint);padding:0 11px;margin-top:-4px">${esc(o.razon||"")}</div>
-    `).join("")+`</div>` : `<div class="empty">Sin candidatos destacados hoy.</div>`;
+        <span class="ind-val warn" style="font-family:var(--font-mono);font-size:12px">${sc}</span>
+        <button onclick="abrirFundamentales('${esc(o.ticker)}')" style="font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);cursor:pointer;white-space:nowrap">Analizar →</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink-faint);padding:0 11px 6px;margin-top:-4px">${esc(o.razon||"")}</div>`;
+    }
+    h+=`</div>`;
+    box.innerHTML=h;
   }catch(e){ box.innerHTML=`<div class="empty">Screener no disponible ahora.</div>`; }
+}
+
+// ── Fundamentales modal ─────────────────────────────────────
+function cerrarFundamentales(){
+  document.getElementById("fund-modal").hidden=true;
+}
+document.getElementById("fund-modal").addEventListener("click", ev=>{
+  if(ev.target===ev.currentTarget) cerrarFundamentales();
+});
+document.addEventListener("keydown", ev=>{ if(ev.key==="Escape") cerrarFundamentales(); });
+
+async function abrirFundamentales(ticker){
+  const modal=document.getElementById("fund-modal");
+  const loading=document.getElementById("fund-loading");
+  modal.hidden=false;
+  loading.hidden=false;
+  document.getElementById("fund-tk").textContent=ticker;
+  document.getElementById("fund-badge").textContent="";
+  document.getElementById("fund-score").textContent="";
+  document.getElementById("fund-grafico").innerHTML="";
+  document.getElementById("fund-razones").innerHTML="";
+  document.getElementById("fund-riesgos").innerHTML="";
+  document.getElementById("fund-datos").innerHTML="";
+  try{
+    const d=await fetch("/api/fundamentals/"+encodeURIComponent(ticker),{headers:{"Content-Type":"application/json"}})
+      .then(async r=>{ if(!r.ok){ let m=r.status; try{m=(await r.json()).error||m;}catch(_){} throw new Error(m); } return r.json(); });
+
+    const rec=d.recomendacion||{};
+    const nivel=rec.nivel||"ESPERAR";
+    const score=rec.puntuacion??50;
+    const badgeEl=document.getElementById("fund-badge");
+    badgeEl.textContent=nivel;
+    const colMap={COMPRA:"var(--buy-bg);color:var(--buy)",VENTA:"var(--sell-bg);color:var(--sell)",ESPERAR:"var(--watch-bg);color:var(--watch)"};
+    badgeEl.style.cssText=`font-family:var(--font-mono);font-size:11px;font-weight:700;padding:4px 9px;border-radius:5px;letter-spacing:.05em;background:${(colMap[nivel]||"var(--neutral-bg);color:var(--neutral)").split(";")[0].replace("background:","")};color:${(colMap[nivel]||"var(--neutral-bg);color:var(--neutral)").split("color:")[1]||"var(--neutral)"}`;
+    document.getElementById("fund-score").textContent=`Puntuación: ${score}/100`;
+
+    // Sparkline 30d
+    if(d.serie_30d&&d.serie_30d.length>=5){
+      const svg=sparklineGrande(d.serie_30d);
+      document.getElementById("fund-grafico").innerHTML=svg;
+    }
+
+    // Razones (verde) y riesgos (naranja/rojo)
+    const razones=rec.razones||[];
+    const riesgos=rec.riesgos||[];
+    if(razones.length){
+      document.getElementById("fund-razones").innerHTML=
+        `<div style="font-size:11px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em">✅ A favor</div>`+
+        razones.map(r=>`<div style="font-size:12.5px;color:var(--buy);padding:2px 0">• ${esc(r)}</div>`).join("");
+    }
+    if(riesgos.length){
+      document.getElementById("fund-riesgos").innerHTML=
+        `<div style="font-size:11px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em;margin-top:${razones.length?10:0}px">⚠️ Riesgos</div>`+
+        riesgos.map(r=>`<div style="font-size:12.5px;color:var(--watch);padding:2px 0">• ${esc(r)}</div>`).join("");
+    }
+
+    // Datos fundamentales
+    const f=d.fundamentales||{};
+    const sn=d.snapshot||{};
+    const rs=d.fuerza_relativa||{};
+    const datos=[];
+    if(f.per!=null)           datos.push(["P/E", f.per.toFixed(1)]);
+    if(f.potencial_pct!=null) datos.push(["Potencial", (f.potencial_pct>=0?"+":"")+f.potencial_pct.toFixed(0)+"%", f.potencial_pct>=0?"var(--buy)":"var(--sell)"]);
+    if(f.dividendo_pct!=null) datos.push(["Dividendo", f.dividendo_pct.toFixed(2)+"%"]);
+    if(f.dias_al_balance!=null) datos.push(["Balance", f.dias_al_balance<0?"pasó":"en "+f.dias_al_balance+" d", f.dias_al_balance>=0&&f.dias_al_balance<=10?"var(--watch)":null]);
+    if(sn.rsi!=null)          datos.push(["RSI", Number(sn.rsi).toFixed(0), sn.rsi<35?"var(--buy)":sn.rsi>70?"var(--sell)":null]);
+    if(rs.rs_21!=null)        datos.push(["vs índice 21d", (rs.rs_21>=0?"+":"")+Number(rs.rs_21).toFixed(1)+"%", rs.rs_21>=0?"var(--buy)":"var(--sell)"]);
+    if(f.capitalizacion!=null)datos.push(["Market cap", compacto(f.capitalizacion)]);
+    if(f.beta!=null)          datos.push(["Beta", f.beta.toFixed(2)]);
+
+    document.getElementById("fund-datos").innerHTML=datos.map(([l,v,c])=>
+      `<div style="display:flex;flex-direction:column;background:var(--neutral-bg);border-radius:7px;padding:7px 10px;min-width:90px">
+        <span style="font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint)">${esc(l)}</span>
+        <span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:${c||"var(--ink)"}">${esc(v)}</span>
+      </div>`
+    ).join("");
+
+  }catch(e){
+    document.getElementById("fund-razones").innerHTML=`<div style="color:var(--sell);font-size:13px">Error: ${esc(e.message)}</div>`;
+  }
+  loading.hidden=true;
+}
+
+function sparklineGrande(serie){
+  if(!Array.isArray(serie)||serie.length<5) return "";
+  const W=380,H=60,P=4;
+  const mn=Math.min(...serie),mx=Math.max(...serie);
+  if(mx===mn) return "";
+  const x=i=>P+i*(W-2*P)/(serie.length-1);
+  const y=v=>H-P-(v-mn)/(mx-mn)*(H-2*P);
+  const pts=serie.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const sube=serie[serie.length-1]>=serie[0];
+  const col=sube?"var(--buy)":"var(--sell)";
+  const ex=x(serie.length-1).toFixed(1),ey=y(serie[serie.length-1]).toFixed(1);
+  const inicio=`$${num(serie[0],2)}`, fin=`$${num(serie[serie.length-1],2)}`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:60px" role="img" aria-label="Precio últimos 30 días">
+    <polygon points="${P},${H-P} ${pts} ${W-P},${H-P}" fill="${col}" opacity=".08"></polygon>
+    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>
+    <circle cx="${ex}" cy="${ey}" r="2.5" fill="${col}"></circle>
+    <text x="${P}" y="${H-1}" font-size="9" fill="var(--ink-faint)" font-family="monospace">${inicio}</text>
+    <text x="${W-P}" y="${H-1}" font-size="9" fill="${col}" font-family="monospace" text-anchor="end">${fin}</text>
+  </svg>`;
 }
 
 async function cargarNoticias(){
