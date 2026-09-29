@@ -36,6 +36,14 @@
   --buy-bg:#14291f; --sell-bg:#2c1817; --watch-bg:#2b2213; --neutral-bg:#22262d;
   color-scheme:dark;
 }
+:root[data-theme="light"]{
+  --ink:#16181d; --ink-soft:#5b6270; --ink-faint:#8d94a3;
+  --paper:#f7f7f4; --surface:#ffffff; --line:#e2e3df; --line-soft:#eeefeb;
+  --accent:#1a5c4a; --accent-soft:#e6f0ec;
+  --buy:#1a7a4c; --sell:#b02a2a; --watch:#9a6b12; --neutral:#6b7280;
+  --buy-bg:#e8f4ed; --sell-bg:#fbeaea; --watch-bg:#fdf3e0; --neutral-bg:#f0f1f3;
+  color-scheme:light;
+}
 *{box-sizing:border-box}
 html,body{margin:0}
 img,svg{max-width:100%}
@@ -58,6 +66,10 @@ header{
 }
 .titlebar{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px}
 .sub{font-size:12.5px; color:var(--ink-faint); font-family:var(--font-mono)}
+.header-actions{display:flex; align-items:center; gap:6px; margin-left:auto}
+.hbtn{font-size:13px; font-weight:500; padding:5px 10px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink-soft); white-space:nowrap; transition:background .15s}
+.hbtn:hover{background:var(--neutral-bg); color:var(--ink)}
+.hbtn.active{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
 .contexto{display:flex; gap:8px; flex-wrap:wrap}
 .ctx{display:flex; flex-direction:column; padding:7px 12px; border-radius:8px; background:var(--surface); border:1px solid var(--line); min-width:0}
 .ctx-lbl{font-size:9.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-faint)}
@@ -121,6 +133,9 @@ section{min-width:0}
 .card-news a:hover{color:var(--accent); text-decoration:underline}
 .when{font-family:var(--font-mono); font-size:10px; color:var(--ink-faint); margin-top:8px}
 
+/* ── Divergencia badge ──────────────────────────────────── */
+.badge-div{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:var(--watch-bg);color:var(--watch);margin-top:4px}
+
 /* ── Semáforos globales ─────────────────────────────────── */
 .semaforos-globales{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px}
 .sg{display:flex; flex-direction:column; align-items:center; padding:10px 16px; border-radius:10px; background:var(--surface); border:1px solid var(--line); min-width:90px; gap:3px}
@@ -131,6 +146,10 @@ section{min-width:0}
 .sg.rojo{border-color:var(--sell); background:var(--sell-bg)}
 .sg.amarillo{border-color:var(--watch); background:var(--watch-bg)}
 
+/* Correlación dólar */
+.dolar-corr{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--ink-soft)}
+.dolar-corr strong{color:var(--ink)}
+
 /* Plazos en tarjeta ────────────────────────────────────── */
 .plazos-card{display:flex; gap:5px; align-items:center; margin-top:6px}
 .pz{display:inline-flex; align-items:center; gap:3px; font-size:10px; font-family:var(--font-mono); padding:2px 7px; border-radius:4px; background:var(--neutral-bg); color:var(--ink-soft)}
@@ -138,6 +157,26 @@ section{min-width:0}
 .pz.buy-pz{background:var(--buy-bg); color:var(--buy)}
 .pz.sell-pz{background:var(--sell-bg); color:var(--sell)}
 .pz.watch-pz{background:var(--watch-bg); color:var(--watch)}
+
+/* ── Mapa de calor ──────────────────────────────────────── */
+.heatmap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px;margin-top:12px}
+.hm-cell{border-radius:8px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:72px;border:1px solid rgba(0,0,0,.06)}
+.hm-ticker{font-family:var(--font-mono);font-size:12px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+.hm-var{font-family:var(--font-mono);font-size:11px;font-weight:600;color:rgba(255,255,255,.9)}
+
+/* ── Calendario ─────────────────────────────────────────── */
+.eventos{display:flex;flex-direction:column;gap:5px}
+.evento{display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--surface);border:1px solid var(--line);border-radius:7px;font-size:12px}
+.evento-fecha{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-faint);white-space:nowrap;min-width:52px}
+.evento-tipo{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px;white-space:nowrap}
+.evento-tipo.balance{background:var(--accent-soft);color:var(--accent)}
+.evento-tipo.fed{background:var(--watch-bg);color:var(--watch)}
+
+/* ── Señales históricas ─────────────────────────────────── */
+.ratio-senales{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.rs-stat{display:flex;flex-direction:column;padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--line);min-width:80px}
+.rs-num{font-family:var(--font-mono);font-size:18px;font-weight:700}
+.rs-lbl{font-size:10px;color:var(--ink-faint);margin-top:2px}
 
 /* ── Lateral ────────────────────────────────────────────── */
 .addbar{display:flex; gap:7px; margin-bottom:12px; flex-wrap:wrap}
@@ -171,6 +210,11 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
   <div class="titlebar">
     <h1>Mesa de Operaciones</h1>
     <span class="sub">CEDEARs · Cripto · bCBA</span>
+    <div class="header-actions">
+      <button class="hbtn" id="btn-notif" title="Notificaciones push">🔔</button>
+      <button class="hbtn" id="btn-csv" title="Exportar alertas CSV">CSV</button>
+      <button class="hbtn" id="btn-tema" title="Cambiar tema">🌙</button>
+    </div>
   </div>
   <div class="contexto" id="contexto">
     <div class="ctx">
@@ -198,11 +242,23 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
     </div>
     <div class="err" id="snap-err" hidden></div>
     <div class="cards" id="cards"></div>
+
+    <!-- Mapa de calor -->
+    <div class="sec-head" style="margin-top:26px"><h2>Mapa de calor del día</h2></div>
+    <div id="heatmap" class="heatmap-grid"></div>
+
+    <!-- Ratio de señales -->
+    <div class="sec-head" style="margin-top:26px"><h2>Señales actuales</h2></div>
+    <div id="ratio-senales"></div>
   </section>
 
   <section>
     <div class="sec-head"><h2>Portfolio</h2><span class="count" id="pf-count"></span></div>
     <div id="portfolio"></div>
+
+    <!-- Calendario de eventos -->
+    <div class="sec-head" style="margin-top:24px"><h2>Próximos eventos</h2></div>
+    <div id="calendario-eventos"></div>
 
     <div class="sec-head" style="margin-top:24px"><h2>Qué vigila</h2><span class="count" id="wl-count"></span></div>
     <div class="err" id="wl-err" hidden></div>
@@ -249,7 +305,110 @@ const compacto = v => { if(v==null) return null; const a=Math.abs(v);
   if(a>=1e6) return (v/1e6).toFixed(0)+" M"; return num(v,0); };
 function errBox(id,e){ const el=document.getElementById(id); if(!el) return; el.hidden=false; el.textContent="Error: "+e.message; }
 
-// ── Grafico de precio: una serie, linea fina, punto final destacado ──
+// ── Feature 1: Toggle modo oscuro/claro ─────────────────────
+(function initTema(){
+  const btn = document.getElementById("btn-tema");
+  function aplicar(tema){
+    document.documentElement.setAttribute("data-theme", tema);
+    btn.textContent = tema === "dark" ? "☀️" : "🌙";
+    try{ localStorage.setItem("tema", tema); }catch(_){}
+  }
+  // Leer preferencia guardada
+  let saved;
+  try{ saved = localStorage.getItem("tema"); }catch(_){}
+  if(saved === "dark" || saved === "light"){
+    aplicar(saved);
+  } else {
+    // Detectar preferencia del sistema
+    const preferDark = window.matchMedia("(prefers-color-scheme:dark)").matches;
+    aplicar(preferDark ? "dark" : "light");
+  }
+  btn.addEventListener("click", ()=>{
+    const current = document.documentElement.getAttribute("data-theme");
+    aplicar(current === "dark" ? "light" : "dark");
+  });
+})();
+
+// ── Feature 3: Notificaciones push ──────────────────────────
+let notifActivas = false;
+let señalesPrevias = new Set();
+(function initNotif(){
+  const btn = document.getElementById("btn-notif");
+  try{
+    const s = localStorage.getItem("notif");
+    if(s === "on") notifActivas = true;
+  }catch(_){}
+  actualizarBtnNotif();
+  btn.addEventListener("click", async ()=>{
+    if(!("Notification" in window)){
+      alert("Tu navegador no soporta notificaciones push.");
+      return;
+    }
+    if(notifActivas){
+      notifActivas = false;
+      try{ localStorage.setItem("notif","off"); }catch(_){}
+      actualizarBtnNotif();
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    if(perm === "granted"){
+      notifActivas = true;
+      try{ localStorage.setItem("notif","on"); }catch(_){}
+      new Notification("Mesa de Operaciones", {body:"Las alertas de señales fuertes están activadas.", icon:""});
+    } else {
+      alert("Permiso de notificaciones denegado. Habilitalo en la configuración del navegador.");
+    }
+    actualizarBtnNotif();
+  });
+})();
+function actualizarBtnNotif(){
+  const btn = document.getElementById("btn-notif");
+  if(notifActivas){ btn.classList.add("active"); btn.title="Notificaciones ON — clic para desactivar"; }
+  else { btn.classList.remove("active"); btn.title="Activar notificaciones push"; }
+}
+function checkNotifFuertes(nuevosSnaps){
+  if(!notifActivas || Notification.permission !== "granted") return;
+  for(const s of nuevosSnaps){
+    if((s.senal==="BUY"||s.senal==="SELL") && s.fuerza==="FUERTE"){
+      const key = s.ticker + "_" + s.senal + "_" + s.fuerza;
+      if(!señalesPrevias.has(key)){
+        señalesPrevias.add(key);
+        try{
+          new Notification(`${s.senal} FUERTE — ${s.ticker}`, {
+            body: `Precio: $${s.precio ?? "—"} | Score: ${Number(s.score||0).toFixed(1)}`,
+            tag: key
+          });
+        }catch(_){}
+      }
+    }
+  }
+}
+
+// ── Feature 2: Exportar CSV de alertas ──────────────────────
+document.getElementById("btn-csv").addEventListener("click", async ()=>{
+  const btn = document.getElementById("btn-csv");
+  btn.disabled = true;
+  try{
+    const alertas = await api("alertas");
+    if(!alertas || !alertas.length){ alert("Sin alertas en las últimas 48 horas."); return; }
+    const cols = ["ticker","senal","fuerza","precio","score","creado_en"];
+    const header = cols.join(",");
+    const rows = alertas.map(a => cols.map(c => {
+      const v = a[c] ?? "";
+      return typeof v === "string" && v.includes(",") ? `"${v}"` : v;
+    }).join(","));
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `alertas_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
+  }catch(e){ alert("Error al exportar: "+e.message); }
+  finally{ btn.disabled = false; }
+});
+
+// ── Grafico de precio ────────────────────────────────────────
 function sparkline(serie){
   if(!Array.isArray(serie) || serie.length < 8) return "";
   const W=100, H=30, P=2;
@@ -279,6 +438,21 @@ function plazo(lbl,dir){
   return `<span class="plazo ${dir==="alcista"?"ok":"bad"}">${esc(lbl)} <b>${dir==="alcista"?"↑":"↓"}</b></span>`;
 }
 
+// ── Feature 5: Detectar divergencia RSI/precio ──────────────
+function detectarDivergencia(s){
+  const i = s.indicadores || {};
+  const rsi = i.rsi;
+  const roc5 = i.roc_5;
+  if(rsi == null || roc5 == null) return false;
+  // Divergencia alcista: precio bajó pero RSI subió hacia zona neutra (RSI < 40 y roc5 < -2%)
+  // Divergencia bajista: precio subió pero RSI bajó (RSI > 60 y roc5 > 2% pero MACD bajista)
+  const macdBajista = i.macd_hist != null && i.macd_hist < 0;
+  const macdAlcista = i.macd_hist != null && i.macd_hist > 0;
+  if(roc5 > 2 && rsi < 50 && macdBajista) return "bajista"; // precio sube, RSI/MACD débiles
+  if(roc5 < -2 && rsi > 50 && macdAlcista) return "alcista"; // precio baja, RSI/MACD fuertes
+  return false;
+}
+
 function tarjeta(s){
   const i=s.indicadores||{}, f=i.fundamentales||{}, t=i.tendencias||{}, R=i.riesgo||{},
         rs=i.fuerza_relativa||{}, rango=i.rango||{};
@@ -298,6 +472,10 @@ function tarjeta(s){
   const tieneFund = f.per || f.capitalizacion || f.precio_objetivo || f.proximo_balance;
   const tieneRiesgo = R.stop_sugerido != null;
 
+  // Feature 5: divergencia
+  const div = detectarDivergencia(s);
+  const divBadge = div ? `<span class="badge-div">⚡ Divergencia ${div}</span>` : "";
+
   return `<article class="card ${esc(s.senal)}">
     <div class="card-top">
       <span class="tk">${esc(s.ticker)}</span>
@@ -307,9 +485,9 @@ function tarjeta(s){
       <span class="precio">$${num(s.precio,dec)??"—"}${v==null?"":` <span class="${v>=0?"up":"dn"}">${v>=0?"+":""}${v.toFixed(2)}%</span>`}</span>
       ${f.nombre?`<span class="nombre">${esc(f.nombre)}</span>`:""}
     </div>
+    ${divBadge}
 
     ${(()=>{
-      // CP = RSI + MACD + volumen  |  MP = tendencia 1D + BB + soportes  |  LP = tendencia semanal + dist_max_52s + fundamentales
       const sem=i.semaforo||{};
       function calcPlazo(keys){
         let v=0,r=0,a=0;
@@ -319,7 +497,6 @@ function tarjeta(s){
       }
       const cp=calcPlazo(["rsi","macd","volumen"]);
       const mp=calcPlazo(["tendencia","bollinger","soportes"]);
-      // LP: tendencia semanal + dist_max_52s proxy + fundamentales (si tiene precio objetivo alcista)
       let lpBuy=0,lpSell=0;
       const ts=i.tendencia_semanal||{};
       if(ts.alineacion){if(ts.alineacion.includes("alcist")) lpBuy++; else if(ts.alineacion.includes("bajist")) lpSell++;}
@@ -428,12 +605,23 @@ function calcSemaforoGlobal(snaps, keys){
   return {estado, buy, sell, watch, total};
 }
 
+// ── Feature 8: Correlación dólar-CEDEAR ─────────────────────
+function renderCorrelacionDolar(contexto){
+  if(!contexto) return "";
+  const d = contexto.dolar || {};
+  const spread = d.spread_blue_pct;
+  if(spread == null && !d.blue) return "";
+  const spreadTxt = spread != null ? `Brecha blue/oficial: <strong>${Number(spread).toFixed(1)}%</strong>. ` : "";
+  return `<div class="dolar-corr">💱 ${spreadTxt}Si el blue sube +1%, los CEDEARs en ARS suben nominalmente ~1% (cobertura 1:1 aproximada por el tipo de cambio implícito).</div>`;
+}
+
+let _contextoCache = null;
+
 function renderSemaforosGlobales(){
   const box=document.getElementById("semaforos-globales");
   if(!box||!snaps.length){if(box) box.innerHTML=""; return;}
   const CP=calcSemaforoGlobal(snaps,["rsi","macd","volumen"]);
   const MP=calcSemaforoGlobal(snaps,["tendencia","bollinger","soportes"]);
-  // LP: calcular desde datos directos
   let lpBuy=0,lpSell=0,lpWatch=0;
   for(const s of snaps){
     const i=s.indicadores||{}, f=i.fundamentales||{};
@@ -449,7 +637,92 @@ function renderSemaforosGlobales(){
 
   const luz=e=>e==="verde"?"🟢":e==="rojo"?"🔴":"🟡";
   const sg=(lbl,d)=>{if(!d) return ""; return `<div class="sg ${d.estado}"><div class="sg-luz">${luz(d.estado)}</div><div class="sg-lbl">${lbl}</div><div class="sg-cnt">${d.buy}↑ ${d.sell}↓ ${d.watch}~</div></div>`;};
-  box.innerHTML=sg("Corto plazo",CP)+sg("Mediano plazo",MP)+sg("Largo plazo",LP);
+  box.innerHTML=sg("Corto plazo",CP)+sg("Mediano plazo",MP)+sg("Largo plazo",LP)+renderCorrelacionDolar(_contextoCache);
+}
+
+// ── Feature 6: Mapa de calor ─────────────────────────────────
+function renderHeatmap(){
+  const box = document.getElementById("heatmap");
+  if(!box || !snaps.length){ if(box) box.innerHTML=""; return; }
+  const items = snaps.filter(s => s.variacion_pct != null);
+  if(!items.length){ box.innerHTML=`<div class="empty">Sin datos de variación.</div>`; return; }
+  box.innerHTML = items.map(s=>{
+    const v = Number(s.variacion_pct);
+    const abs = Math.min(Math.abs(v), 8); // cap en 8% para la intensidad
+    const intens = 0.25 + (abs / 8) * 0.75; // de 25% a 100%
+    const color = v >= 0
+      ? `rgba(26,122,76,${intens})` // verde
+      : `rgba(176,42,42,${intens})`; // rojo
+    return `<div class="hm-cell" style="background:${color}">
+      <span class="hm-ticker">${esc(s.ticker)}</span>
+      <span class="hm-var">${v>=0?"+":""}${v.toFixed(1)}%</span>
+    </div>`;
+  }).join("");
+}
+
+// ── Feature 7: Calendario de eventos ────────────────────────
+// Fechas FOMC 2025-2026 (hardcodeadas)
+const FOMC_DATES = [
+  "2025-01-29","2025-03-19","2025-05-07","2025-06-18",
+  "2025-07-30","2025-09-17","2025-11-05","2025-12-17",
+  "2026-01-28","2026-03-18","2026-05-06","2026-06-17",
+  "2026-07-29","2026-09-16","2026-11-04","2026-12-16"
+];
+function renderCalendario(){
+  const box = document.getElementById("calendario-eventos");
+  if(!box) return;
+  const hoy = new Date();
+  const eventos = [];
+
+  // Balances de fundamentales
+  for(const s of snaps){
+    const f = (s.indicadores||{}).fundamentales||{};
+    if(f.proximo_balance && f.dias_al_balance != null && f.dias_al_balance >= 0 && f.dias_al_balance <= 60){
+      const fecha = new Date(hoy.getTime() + f.dias_al_balance * 86400000);
+      eventos.push({ tipo:"balance", label:`${s.ticker} — Balance`, fecha, dias:f.dias_al_balance });
+    }
+  }
+
+  // Próximas reuniones Fed
+  for(const ds of FOMC_DATES){
+    const fecha = new Date(ds + "T00:00:00");
+    const dias = Math.floor((fecha - hoy) / 86400000);
+    if(dias >= 0 && dias <= 60) eventos.push({ tipo:"fed", label:"Reunión FOMC (Fed)", fecha, dias });
+  }
+
+  if(!eventos.length){ box.innerHTML=`<div class="empty">Sin eventos en los próximos 60 días.</div>`; return; }
+
+  eventos.sort((a,b)=>a.fecha-b.fecha);
+  box.innerHTML=`<div class="eventos">`+eventos.slice(0,8).map(e=>{
+    const d = e.fecha.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit"});
+    const diasTxt = e.dias === 0 ? "hoy" : `en ${e.dias}d`;
+    return `<div class="evento">
+      <span class="evento-fecha">${d} <span style="color:var(--ink-faint)">${diasTxt}</span></span>
+      <span class="evento-tipo ${e.tipo}">${e.tipo==="balance"?"Balance":"FOMC"}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.label)}</span>
+    </div>`;
+  }).join("")+`</div>`;
+}
+
+// ── Feature 9: Ratio de señales ──────────────────────────────
+function renderRatioSenales(){
+  const box = document.getElementById("ratio-senales");
+  if(!box || !snaps.length){ if(box) box.innerHTML=""; return; }
+  // Candidatos ganadores: señal BUY con variación positiva (potencial)
+  const buys = snaps.filter(s=>s.senal==="BUY");
+  const sells = snaps.filter(s=>s.senal==="SELL");
+  const buyPos = buys.filter(s=>Number(s.variacion_pct||0)>0).length;
+  const buyNeg = buys.filter(s=>Number(s.variacion_pct||0)<=0).length;
+  const sellPos = sells.filter(s=>Number(s.variacion_pct||0)<0).length; // SELL + baja = acierto potencial
+  const watch = snaps.filter(s=>s.senal==="WATCH").length;
+
+  box.innerHTML=`<div class="ratio-senales">
+    <div class="rs-stat"><span class="rs-num up">${buyPos}</span><span class="rs-lbl">BUY · precio ↑</span></div>
+    <div class="rs-stat"><span class="rs-num dn">${buyNeg}</span><span class="rs-lbl">BUY · precio ↓</span></div>
+    <div class="rs-stat"><span class="rs-num ok">${sellPos}</span><span class="rs-lbl">SELL · precio ↓</span></div>
+    <div class="rs-stat"><span class="rs-num" style="color:var(--watch)">${watch}</span><span class="rs-lbl">En vigilancia</span></div>
+  </div>
+  <p style="font-size:11px;color:var(--ink-faint);margin:4px 0 0">Basado en señal actual vs variación del día. Historial completo: pendiente.</p>`;
 }
 
 function render(){
@@ -464,16 +737,29 @@ function render(){
   lista=[...lista].sort((a,b)=>Math.abs(Number(b.score||0))-Math.abs(Number(a.score||0)));
   box.innerHTML=lista.map(tarjeta).join("");
   renderSemaforosGlobales();
+  renderHeatmap();
+  renderCalendario();
+  renderRatioSenales();
 }
 
 // ── Cargas ─────────────────────────────────────────────────
 function ctxCard(lbl,val,sub,cls=""){
   return `<div class="ctx"><span class="ctx-lbl">${esc(lbl)}</span><span class="ctx-val ${cls}">${val}</span><span class="ctx-sub">${sub||""}</span></div>`;
 }
+
+// ── Feature 4: VIX ──────────────────────────────────────────
+function clasificarVIX(v){
+  if(v < 15) return {cls:"up", txt:"Calma"};
+  if(v < 25) return {cls:"", txt:"Moderado"};
+  return {cls:"dn", txt:"Alto"};
+}
+
 async function cargarContexto(){
   let h="";
   try{
-    const c=await api("contexto"), fg=c.fear_greed, d=c.dolar||{};
+    const c=await api("contexto");
+    _contextoCache = c;
+    const fg=c.fear_greed, d=c.dolar||{};
     if(fg&&fg.value!=null){
       const v=Number(fg.value), cls=v<=25?"dn":v>=75?"up":"";
       const cara=v<=25?"Miedo extremo":v<=45?"Miedo":v<=55?"Neutral":v<=75?"Codicia":"Codicia extrema";
@@ -483,13 +769,21 @@ async function cargarContexto(){
     if(d.blue)    h+=ctxCard("Blue","$"+num(d.blue,0), d.spread_blue_pct!=null?`brecha ${num(d.spread_blue_pct,1)}%`:"");
     if(d.mep)     h+=ctxCard("MEP","$"+num(d.mep,0),"");
     if(d.ccl)     h+=ctxCard("CCL","$"+num(d.ccl,0),"");
+    // Feature 4: VIX
+    if(c.vix != null){
+      const vixVal = Number(c.vix);
+      const vixCls = clasificarVIX(vixVal);
+      h+=ctxCard("VIX", vixVal.toFixed(1), vixCls.txt, vixCls.cls);
+    }
   }catch(e){}
   document.getElementById("contexto").insertAdjacentHTML("beforeend",h);
 }
 
 async function cargarSnapshot(){
   try{
-    snaps=await api("snapshot");
+    const nuevos=await api("snapshot");
+    checkNotifFuertes(nuevos);
+    snaps=nuevos;
     document.getElementById("snap-err").hidden=true;
     const ult=snaps.map(s=>s.actualizado_en).filter(Boolean).sort().pop();
     const mins=ult?(Date.now()-new Date(ult))/60000:Infinity;

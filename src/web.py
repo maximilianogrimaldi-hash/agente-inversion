@@ -169,7 +169,7 @@ def cached(clave: str, segundos: int, productor):
 @app.get("/api/contexto")
 @require_auth
 def get_contexto():
-    """Fear & Greed + tipos de cambio. Lo que hoy solo iba al resumen de Telegram."""
+    """Fear & Greed + tipos de cambio + VIX."""
     from fear_greed import get_fear_greed
     from dollar_monitor import get_dollar_rates, get_dolar_mep_ccl
 
@@ -177,9 +177,23 @@ def get_contexto():
     dolar = cached("dolar", 600, get_dollar_rates) or {}
     mep_ccl = cached("mep_ccl", 600, get_dolar_mep_ccl) or {}
 
+    # VIX: índice de volatilidad del mercado
+    def traer_vix():
+        try:
+            from market_data import get_series
+            serie = get_series("^VIX", "CEDEAR", "5d", "1d")
+            if serie and len(serie) > 0:
+                return float(serie[-1])
+        except Exception as e:
+            logger.warning(f"VIX: {e}")
+        return None
+
+    vix = cached("vix", 1800, traer_vix)
+
     return jsonify({
         "fear_greed": fg,
         "dolar": {**dolar, **{k: v for k, v in mep_ccl.items() if v}},
+        "vix": vix,
     })
 
 
