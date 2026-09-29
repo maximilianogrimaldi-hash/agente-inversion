@@ -332,6 +332,40 @@ function tarjeta(s){
     </div></div>` : ""}
 
     ${motivos?`<div class="bloque"><div class="bloque-tit">Por qué</div><div class="motivos">${motivos}</div></div>`:""}
+
+    ${(()=>{
+      const sem=i.semaforo||{};
+      const labs={tendencia:"Tend",rsi:"RSI",macd:"MACD",bollinger:"BB",volumen:"Vol",soportes:"Sop"};
+      const clr={verde:"var(--buy)",amarillo:"var(--watch)",rojo:"var(--sell)"};
+      const parts=Object.entries(labs).map(([k,l])=>{
+        const v=sem[k]; if(!v) return "";
+        const dot=`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${clr[v]||"var(--neutral)"};margin-right:3px"></span>`;
+        return `<span style="display:inline-flex;align-items:center;font-size:10px;font-family:var(--font-mono);margin-right:8px">${dot}${l}</span>`;
+      }).join("");
+      return parts ? `<div class="bloque"><div class="bloque-tit">Semáforo</div><div style="padding-top:3px">${parts}</div></div>` : "";
+    })()}
+
+    ${(()=>{
+      const d52=i.dist_max_52s, d6m=i.dist_max_6m, d3m=i.dist_max_3m;
+      if(d52==null) return "";
+      const fmt=(v,l)=>v==null?"":ind(l,(v>=0?"+":"")+v.toFixed(1)+"%",v>=-5?"warn":"bad");
+      return `<div class="bloque"><div class="bloque-tit">Desde máximos</div><div class="inds">
+        ${fmt(d52,"52 sem")}${fmt(d6m,"6 meses")}${fmt(d3m,"3 meses")}
+      </div></div>`;
+    })()}
+
+    ${(()=>{
+      const conf=i.confirmacion||[];
+      if(!conf.length) return "";
+      const items=conf.map(c=>`<span class="motivo" style="font-size:11px">${esc(c)}</span>`).join("");
+      return `<div class="bloque"><div class="bloque-tit">Qué tiene que pasar</div><div class="motivos">${items}</div></div>`;
+    })()}
+
+    ${(()=>{
+      const ts=i.tipo_senal||s.tipo_senal;
+      return ts==="cartera"?`<div style="margin-top:10px;padding:5px 10px;border-radius:5px;background:var(--sell-bg);color:var(--sell);font-size:11px;font-weight:600">🚨 SEÑAL DE CARTERA — ruptura estructural</div>`:"";
+    })()}
+
     ${news?`<div class="bloque card-news">${news}</div>`:""}
     <div class="when">${ago(s.actualizado_en)}</div>
   </article>`;
