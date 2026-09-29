@@ -39,7 +39,7 @@ def safe(fn, name: str):
 def main():
     logger.info("Agente de Inversion v2 iniciado")
     logger.info(
-        "Jobs: ciclo cada 15min | heartbeat 09:00 | portfolio 09:30 | screener 10:00 | backtesting lunes 08:30"
+        "Jobs: ciclo cada 30min | heartbeat 09:00 | portfolio 09:30 | screener 10:00 | backtesting lunes 08:30"
     )
 
     # Panel web en un thread aparte (no debe tumbar el scheduler si falla)
@@ -66,8 +66,8 @@ def main():
         except Exception as e:
             logger.error(f"Sonda IOL fallo: {e}")
 
-    # Análisis técnico cada 15 minutos
-    schedule.every(15).minutes.do(safe(run_cycle, "ciclo"))
+    # Análisis técnico cada 30 minutos
+    schedule.every(30).minutes.do(safe(run_cycle, "ciclo"))
 
     # Resumen diario completo (Fear&Greed + dólar + noticias + SEC filings)
     schedule.every().day.at("09:00").do(safe(run_heartbeat, "heartbeat"))
