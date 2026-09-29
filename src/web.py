@@ -56,6 +56,10 @@ def require_auth(fn):
                     return fn(*a, **kw)
             except Exception:
                 pass
+        # Para rutas /api/, devolver JSON sin WWW-Authenticate
+        # para que el browser no muestre el diálogo nativo de auth
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "No autorizado"}), 401
         return Response(
             "Acceso restringido.",
             401,
