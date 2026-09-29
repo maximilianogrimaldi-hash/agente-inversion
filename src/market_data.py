@@ -34,6 +34,33 @@ BENCHMARK = {"CEDEAR": "^GSPC", "CRYPTO": "BTC-USD"}
 
 _cache: dict = {}
 
+# Yahoo exige cookie + "crumb" para quoteSummary (no para el chart).
+_sesion = requests.Session()
+_sesion.headers.update(UA)
+_crumb: str | None = None
+
+
+def _asegurar_crumb() -> str | None:
+    """Obtiene el token de sesión que Yahoo pide para los fundamentales."""
+    global _crumb
+    if _crumb:
+        return _crumb
+    try:
+        # Esta llamada siembra las cookies de sesión
+        _sesion.get("https://fc.yahoo.com", timeout=TIMEOUT)
+        r = _sesion.get(
+            "https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=TIMEOUT
+        )
+        texto = (r.text or "").strip()
+        if r.status_code == 200 and texto and len(texto) < 40 and "<" not in texto:
+            _crumb = texto
+            logger.info("[market_data] crumb de Yahoo obtenido")
+        else:
+            logger.warning(f"[market_data] crumb rechazado: HTTP {r.status_code}")
+    except Exception as e:
+        logger.warning(f"[market_data] no pude obtener crumb: {e}")
+    return _crumb
+
 
 def _cached(clave: str, ttl: int, productor):
     ahora = time.time()
@@ -110,13 +137,24 @@ def get_fundamentals(ticker: str, tipo: str = "CEDEAR") -> dict | None:
     sym = _symbol(ticker, tipo)
 
     def traer():
-        r = requests.get(
-            SUMMARY_URL.format(symbol=sym),
-            params={"modules": MODULOS}, headers=UA, timeout=TIMEOUT,
-        )
+        crumb = _asegurar_crumb()
+        params = {"modules": MODULOS}
+        if crumb:
+            params["crumb"] = crumb
+        r = _sesion.get(SUMMARY_URL.format(symbol=sym), params=params, timeout=TIMEOUT)
         if r.status_code != 200:
-            logger.debug(f"Yahoo summary {sym}: HTTP {r.status_code}")
-            return None
+            # Un 401 suele ser el crumb vencido: se descarta y reintenta una vez
+            if r.status_code in (401, 403) and crumb:
+                globals()["_crumb"] = None
+                nuevo = _asegurar_crumb()
+                if nuevo:
+                    r = _sesion.get(
+                        SUMMARY_URL.format(symbol=sym),
+                        params={"modules": MODULOS, "crumb": nuevo}, timeout=TIMEOUT,
+                    )
+            if r.status_code != 200:
+                logger.debug(f"Yahoo summary {sym}: HTTP {r.status_code}")
+                return None
         res = (r.json().get("quoteSummary") or {}).get("result") or []
         if not res:
             return None
@@ -172,7 +210,36 @@ def get_fundamentals(ticker: str, tipo: str = "CEDEAR") -> dict | None:
             )
         return {k: v for k, v in out.items() if v not in (None, "", 0)}
 
-    return _cached(f"fund:{sym}", 21600, traer)  # 6 horas
+    datos = _cached(f"fund:{sym}", 21600, traer)
+    if datos:
+        return datos
+    # Respaldo: el endpoint del gráfico no pide token y trae parte del dato
+    return _cached(f"fund_basico:{sym}", 21600, lambda: _fundamentals_basicos(sym))
+
+
+def _fundamentals_basicos(sym: str) -> dict | None:
+    """Lo que se puede sacar sin token: precio, moneda y rango de 52 semanas."""
+    try:
+        r = requests.get(
+            CHART_URL.format(symbol=sym),
+            params={"range": "1d", "interval": "1d"}, headers=UA, timeout=TIMEOUT,
+        )
+        if r.status_code != 200:
+            return None
+        res = (r.json().get("chart") or {}).get("result") or []
+        if not res:
+            return None
+        m = res[0].get("meta") or {}
+        out = {
+            "nombre": m.get("longName") or m.get("shortName") or "",
+            "moneda": m.get("currency", ""),
+            "precio_usd": m.get("regularMarketPrice"),
+            "max_52s": m.get("fiftyTwoWeekHigh"),
+            "min_52s": m.get("fiftyTwoWeekLow"),
+        }
+        return {k: v for k, v in out.items() if v not in (None, "", 0)} or None
+    except Exception:
+        return None
 
 
 # ─── Fuerza relativa ─────────────────────────────────────────────────────
