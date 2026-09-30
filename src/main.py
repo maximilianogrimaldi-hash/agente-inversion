@@ -190,102 +190,55 @@ def _run_news_check(telegram: TelegramBot, cedears: list, cryptos: list):
 
 
 def run_heartbeat():
-    """Resumen diario completo a las 09:00 UTC."""
+    """Resumen diario a las 09:00 UTC — solo señales nuevas del día."""
     logger.info("=== Iniciando heartbeat diario ===")
     db = SupabaseClient()
     telegram = TelegramBot()
-    cedears = db.get_cedears()
-    cryptos = db.get_cryptos()
 
-    # Fear & Greed
-    fg_data = None
-    fg_msg = ""
-    try:
-        fg_data = get_fear_greed()
-        fg_msg = format_fg_message(fg_data)
-        logger.info(f"Fear & Greed: {fg_data}")
-    except Exception as e:
-        logger.warning(f"Fear & Greed error: {e}")
-
-    # Tipos de cambio
-    dollar_msg = ""
-    dollar_rates = None
-    try:
-        dollar_rates = get_dollar_rates()
-        dollar_msg = format_dollar_message(dollar_rates)
-        logger.info(f"Dólar: {dollar_rates}")
-    except Exception as e:
-        logger.warning(f"Dollar error: {e}")
-
-    # Noticias macro para el resumen
-    news_preview = []
-    sentiment_data = {}
-    try:
-        nc = NewsClient()
-        macro_news = nc.get_macro_news()
-        watchlist_news = nc.get_watchlist_news(cedears[:5], cryptos[:2], max_per_ticker=1)
-        all_news = macro_news + watchlist_news
-        news_preview = all_news[:5]
-
-        sa = SentimentAnalyzer()
-        if all_news:
-            sentiment_data = sa.analyze_news_batch(all_news)
-    except Exception as e:
-        logger.warning(f"News/sentiment error: {e}")
-
-    # Señales recientes (últimas 15 min del ciclo anterior)
+    # Solo señales de las últimas 24hs
     recent_signals = []
     try:
         recent_alerts = db.get_recent_alerts(days_back=1)
-        # Convertir a Signal-like para el formatter
+
         class SigProxy:
             def __init__(self, d):
                 self.ticker = d.get("ticker", "")
                 self.senal = d.get("senal", "")
                 self.fuerza = d.get("fuerza", "")
-        recent_signals = [SigProxy(a) for a in recent_alerts[:5]]
+
+        recent_signals = [SigProxy(a) for a in recent_alerts]
     except Exception as e:
         logger.warning(f"Recent signals error: {e}")
 
-    # Comentario de mercado via Claude
-    commentary = ""
-    try:
-        sa = SentimentAnalyzer()
-        commentary = sa.generate_market_commentary(fg_data, recent_signals, sentiment_data)
-    except Exception as e:
-        logger.debug(f"Commentary skip: {e}")
+    if not recent_signals:
+        logger.info("Heartbeat: sin señales nuevas, no se envía mensaje")
+        return
 
-    # Enviar resumen diario
-    telegram.send_daily_summary(
-        cedears_count=len(cedears),
-        cryptos_count=len(cryptos),
-        fg_msg=fg_msg,
-        dollar_msg=dollar_msg,
-        commentary=commentary,
-        top_signals=recent_signals,
-        news_preview=news_preview,
-    )
+    # Armar mensaje compacto
+    from datetime import datetime as _dt
+    now_str = _dt.utcnow().strftime("%d/%m/%Y")
+    lines = [
+        f"📋 <b>SEÑALES DEL DÍA — {now_str}</b>",
+        f"━━━━━━━━━━━━━━━━━━━━",
+    ]
+    fuerza_order = {"FUERTE": 0, "MODERADA": 1, "DEBIL": 2}
+    recent_signals.sort(key=lambda s: fuerza_order.get(s.fuerza, 3))
+    for sig in recent_signals[:10]:
+        emoji_map = {
+            ("COMPRA", "FUERTE"): "🟢🔥", ("COMPRA", "MODERADA"): "🟢",
+            ("VENTA", "FUERTE"): "🔴🔥", ("VENTA", "MODERADA"): "🔴",
+        }
+        emoji = emoji_map.get((sig.senal, sig.fuerza), "🔔")
+        lines.append(f"  {emoji} <b>{sig.ticker}</b>: {sig.senal} {sig.fuerza}")
 
-    # SEC Filings (semanal, pero se chequea diario y solo avisa si hay algo nuevo)
-    try:
-        sec = SECMonitor()
-        filings = sec.scan_watchlist(cedears, days_back=7)
-        if filings:
-            telegram.send_sec_filings(filings)
-            logger.info(f"SEC: {len(filings)} filings enviados")
-    except Exception as e:
-        logger.warning(f"SEC error: {e}")
+    if len(recent_signals) > 10:
+        lines.append(f"  ... y {len(recent_signals) - 10} señales más")
 
-    # Alertas de correlación dólar-CEDEAR
-    try:
-        if dollar_rates:
-            correlation_alerts = analyze_dollar_cedear_correlation(dollar_rates, recent_signals)
-            if correlation_alerts:
-                telegram.send_dollar_alert("", correlation_alerts)
-    except Exception as e:
-        logger.debug(f"Dollar correlation skip: {e}")
+    lines.append(f"\n━━━━━━━━━━━━━━━━━━━━")
+    lines.append(f"🕘 {_dt.utcnow().strftime('%H:%M UTC')} · <i>Solo informativo</i>")
 
-    logger.info("Heartbeat diario completado")
+    telegram._send("\n".join(lines))
+    logger.info(f"Heartbeat: {len(recent_signals)} señales enviadas")
 
 
 def run_screener():
