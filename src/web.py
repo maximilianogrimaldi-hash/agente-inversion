@@ -344,15 +344,20 @@ def get_portfolio_api():
     def _calc_total(subset):
         invertido = sum(float(p.get("cantidad", 0)) * float(p.get("precio_entrada", 0))
                         for p in subset if p.get("precio_entrada"))
-        actual = sum(float(p.get("cantidad", 0)) * float(p.get("precio_actual", 0))
-                     for p in subset if p.get("precio_actual"))
         if invertido <= 0:
             return None
+        # Para posiciones sin precio actual (ej: USD sin fuente de precios),
+        # usar precio_entrada como precio actual (muestra inversión al costo, PnL=0)
+        actual_con_precio = sum(float(p.get("cantidad", 0)) * float(p.get("precio_actual", 0))
+                                for p in subset if p.get("precio_actual"))
+        invertido_sin_precio = sum(float(p.get("cantidad", 0)) * float(p.get("precio_entrada", 0))
+                                   for p in subset if p.get("precio_entrada") and not p.get("precio_actual"))
+        actual = actual_con_precio + invertido_sin_precio
         return {
             "invertido": round(invertido, 2),
             "actual": round(actual, 2),
             "pnl_abs": round(actual - invertido, 2),
-            "pnl_pct": round((actual / invertido - 1) * 100, 2),
+            "pnl_pct": round((actual / invertido - 1) * 100, 2) if invertido > 0 else 0,
         }
 
     ars = [p for p in pnl if not p.get("moneda") or p.get("moneda") == "ARS"]
