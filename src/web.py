@@ -341,19 +341,30 @@ def get_portfolio_api():
         except Exception:
             pass
 
-    invertido = sum(float(p.get("cantidad", 0)) * float(p.get("precio_entrada", 0))
-                    for p in pnl if p.get("precio_entrada"))
-    actual = sum(float(p.get("cantidad", 0)) * float(p.get("precio_actual", 0))
-                 for p in pnl if p.get("precio_actual"))
-    total = None
-    if invertido > 0:
-        total = {
+    def _calc_total(subset):
+        invertido = sum(float(p.get("cantidad", 0)) * float(p.get("precio_entrada", 0))
+                        for p in subset if p.get("precio_entrada"))
+        actual = sum(float(p.get("cantidad", 0)) * float(p.get("precio_actual", 0))
+                     for p in subset if p.get("precio_actual"))
+        if invertido <= 0:
+            return None
+        return {
             "invertido": round(invertido, 2),
             "actual": round(actual, 2),
             "pnl_abs": round(actual - invertido, 2),
             "pnl_pct": round((actual / invertido - 1) * 100, 2),
         }
-    return jsonify({"posiciones": pnl, "total": total})
+
+    ars = [p for p in pnl if not p.get("moneda") or p.get("moneda") == "ARS"]
+    usd = [p for p in pnl if p.get("moneda") == "USD"]
+
+    return jsonify({
+        "posiciones": pnl,
+        "total_ars": _calc_total(ars),
+        "total_usd": _calc_total(usd),
+        # backward-compat: total general ARS si existe
+        "total": _calc_total(ars) or _calc_total(pnl),
+    })
 
 
 @app.post("/api/portfolio/import")
@@ -372,6 +383,10 @@ def import_portfolio():
     f = request.files["file"]
     if not f.filename.endswith((".xlsx", ".xls")):
         return jsonify({"error": "Solo se aceptan archivos .xlsx"}), 400
+
+    moneda = request.form.get("moneda", "ARS").upper()
+    if moneda not in ("ARS", "USD"):
+        moneda = "ARS"
 
     TIPO_MAP = {"acciones": "CEDEAR", "cedears": "CEDEAR", "crypto": "CRYPTO"}
 
@@ -417,14 +432,20 @@ def import_portfolio():
                 except Exception:
                     rendimiento_pct = None
 
-            res = db()._upsert("portfolio", {
+            payload = {
                 "ticker": ticker,
                 "tipo": tipo,
+                "moneda": moneda,
                 "cantidad": float(cantidad),
                 "precio_entrada": float(precio_prom) if precio_prom else None,
                 "activo": True,
                 "notas": f"Balanz import | rendimiento: {rendimiento_pct}% | días: {dias_tenencia}",
-            }, on_conflict="ticker")
+            }
+            res = db()._upsert("portfolio", payload, on_conflict="ticker")
+            # Si falla (columna moneda no existe aún), reintenta sin ella
+            if res is None:
+                payload.pop("moneda", None)
+                res = db()._upsert("portfolio", payload, on_conflict="ticker")
 
             if res is not None:
                 ok_list.append(ticker)

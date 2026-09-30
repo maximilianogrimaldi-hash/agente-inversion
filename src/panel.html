@@ -271,9 +271,11 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
     <div class="sec-head">
       <h2>Mi Portfolio</h2>
       <span class="count" id="pf-count"></span>
-      <button class="hbtn" id="btn-import-pf" title="Importar posiciones desde Excel de Balanz">📥 Excel</button>
+      <button class="hbtn" id="btn-import-pf-ars" title="Importar posiciones en ARS desde Excel de Balanz">📥 ARS</button>
+      <button class="hbtn" id="btn-import-pf-usd" title="Importar posiciones en USD desde Excel de Balanz">📥 USD</button>
     </div>
-    <input type="file" id="pf-file-input" accept=".xlsx" hidden>
+    <input type="file" id="pf-file-input-ars" accept=".xlsx" hidden>
+    <input type="file" id="pf-file-input-usd" accept=".xlsx" hidden>
     <div class="err" id="pf-import-err" hidden></div>
     <div id="portfolio"></div>
 
@@ -839,77 +841,122 @@ async function cargarSnapshot(){
   }catch(e){ errBox("snap-err",e); }
 }
 
+function renderPosiciones(posiciones, moneda){
+  if(!posiciones||!posiciones.length) return "";
+  let h=`<div class="mini">`;
+  for(const p of posiciones){
+    const pc=p.pnl_pct;
+    const pclsCls=pc==null?"":pc>=0?"ok":"bad";
+    const rend=pc==null?"—":(pc>=0?"+":"")+num(pc,2)+"%";
+    const cant=p.cantidad!=null?num(p.cantidad,0)+"u":null;
+    const sym=moneda==="USD"?"U$S ":"$";
+    const entrada=p.precio_entrada!=null?sym+num(p.precio_entrada,0):null;
+    const stopHtml=p.stop_loss!=null?`
+      <div style="width:100%;margin-top:3px;display:flex;align-items:center;gap:6px">
+        <span style="font-size:10px;font-weight:600;color:var(--ink-faint);letter-spacing:.04em;text-transform:uppercase">Stop${p.stop_tipo==='ATR'?' ATR':''}</span>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--sell);font-weight:600">${sym}${num(p.stop_loss,0)}</span>
+        <span style="font-size:10px;color:var(--ink-faint)">(${num(p.stop_loss_pct,1)}% desde entrada)</span>
+        ${p.precio_actual!=null&&p.stop_loss>p.precio_actual?`<span style="font-size:10px;font-weight:700;color:var(--sell);background:var(--sell-bg);padding:1px 5px;border-radius:3px">⚠ STOP TOCADO</span>`:""}
+      </div>`:"";
+    h+=`<div class="mini-row" style="flex-wrap:wrap;gap:4px;padding:8px 11px">
+      <span class="tk" style="min-width:60px">${esc(p.ticker)}</span>
+      ${cant?`<span style="font-size:11px;color:var(--ink-faint)">${cant}</span>`:""}
+      ${entrada?`<span style="font-size:11px;color:var(--ink-faint)">@${entrada}</span>`:""}
+      <span class="spacer"></span>
+      <span class="ind-val ${pclsCls}" style="font-family:var(--font-mono);font-size:12px">${rend}</span>
+      <button onclick="abrirFundamentales('${esc(p.ticker)}')" style="font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);cursor:pointer;white-space:nowrap">Ver →</button>
+      ${stopHtml}
+    </div>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+
 async function cargarPortfolio(){
   const box=document.getElementById("portfolio");
   try{
     const d=await api("portfolio");
-    if(!d.posiciones.length){
-      box.innerHTML=`<div class="empty">Sin posiciones. Importá tu Excel de Balanz con el botón 📥.</div>`;
+    const total=d.posiciones?d.posiciones.length:0;
+    if(!total){
+      box.innerHTML=`<div class="empty">Sin posiciones. Importá tu Excel de Balanz con los botones 📥 ARS / 📥 USD.</div>`;
       document.getElementById("pf-count").textContent="";
       return;
     }
-    document.getElementById("pf-count").textContent=`${d.posiciones.length} posiciones`;
+    document.getElementById("pf-count").textContent=`${total} posiciones`;
     let h="";
-    if(d.total){
-      const cls=d.total.pnl_pct>=0?"up":"dn";
-      h+=`<div class="total"><span class="ctx-lbl">Valor actual (ARS)</span>
-        <div class="total-val">$${num(d.total.actual,0)}</div>
-        <span class="ctx-sub ${cls}">${d.total.pnl_pct>=0?"+":""}${d.total.pnl_pct}% · $${num(d.total.pnl_abs,0)}</span></div>`;
+
+    // Sección ARS
+    const arsPos=(d.posiciones||[]).filter(p=>!p.moneda||p.moneda==="ARS");
+    if(arsPos.length){
+      const t=d.total_ars;
+      if(t){
+        const cls=t.pnl_pct>=0?"up":"dn";
+        h+=`<div class="total"><span class="ctx-lbl">Cartera ARS</span>
+          <div class="total-val">$${num(t.actual,0)}</div>
+          <span class="ctx-sub ${cls}">${t.pnl_pct>=0?"+":""}${t.pnl_pct}% · $${num(t.pnl_abs,0)}</span></div>`;
+      }
+      h+=renderPosiciones(arsPos,"ARS");
     }
-    h+=`<div class="mini">`;
-    for(const p of d.posiciones){
-      const pc=p.pnl_pct;
-      const pclsCls=pc==null?"":pc>=0?"ok":"bad";
-      const rend=pc==null?"—":(pc>=0?"+":"")+num(pc,2)+"%";
-      const cant=p.cantidad!=null?num(p.cantidad,0)+"u":null;
-      const entrada=p.precio_entrada!=null?"$"+num(p.precio_entrada,0):null;
-      // Stop loss: solo CEDEARs
-      const stopHtml=p.stop_loss!=null?`
-        <div style="width:100%;margin-top:3px;display:flex;align-items:center;gap:6px">
-          <span style="font-size:10px;font-weight:600;color:var(--ink-faint);letter-spacing:.04em;text-transform:uppercase">Stop${p.stop_tipo==='ATR'?' ATR':''}</span>
-          <span style="font-family:var(--font-mono);font-size:11px;color:var(--sell);font-weight:600">$${num(p.stop_loss,0)}</span>
-          <span style="font-size:10px;color:var(--ink-faint)">(${num(p.stop_loss_pct,1)}% desde entrada)</span>
-          ${p.precio_actual!=null&&p.stop_loss>p.precio_actual?`<span style="font-size:10px;font-weight:700;color:var(--sell);background:var(--sell-bg);padding:1px 5px;border-radius:3px">⚠ STOP TOCADO</span>`:""}
-        </div>`:"";
-      h+=`<div class="mini-row" style="flex-wrap:wrap;gap:4px;padding:8px 11px">
-        <span class="tk" style="min-width:60px">${esc(p.ticker)}</span>
-        ${cant?`<span style="font-size:11px;color:var(--ink-faint)">${cant}</span>`:""}
-        ${entrada?`<span style="font-size:11px;color:var(--ink-faint)">@${entrada}</span>`:""}
-        <span class="spacer"></span>
-        <span class="ind-val ${pclsCls}" style="font-family:var(--font-mono);font-size:12px">${rend}</span>
-        <button onclick="abrirFundamentales('${esc(p.ticker)}')" style="font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);cursor:pointer;white-space:nowrap">Ver →</button>
-        ${stopHtml}
-      </div>`;
+
+    // Sección USD
+    const usdPos=(d.posiciones||[]).filter(p=>p.moneda==="USD");
+    if(usdPos.length){
+      const t=d.total_usd;
+      if(t){
+        const cls=t.pnl_pct>=0?"up":"dn";
+        h+=`<div class="total" style="margin-top:12px"><span class="ctx-lbl">Cartera USD</span>
+          <div class="total-val">U$S ${num(t.actual,0)}</div>
+          <span class="ctx-sub ${cls}">${t.pnl_pct>=0?"+":""}${t.pnl_pct}% · U$S ${num(t.pnl_abs,0)}</span></div>`;
+      }
+      h+=renderPosiciones(usdPos,"USD");
     }
-    h+=`</div>`;
+
     box.innerHTML=h;
   }catch(e){ box.innerHTML=`<div class="empty">No pude leer el portfolio.</div>`; }
 }
 
-// Import Excel Balanz
-document.getElementById("btn-import-pf").addEventListener("click",()=>{
-  document.getElementById("pf-file-input").click();
-});
-document.getElementById("pf-file-input").addEventListener("change", async ev=>{
-  const file=ev.target.files[0]; if(!file) return;
-  const btn=document.getElementById("btn-import-pf");
+// Import Excel Balanz — helper compartido
+async function importarExcel(file, moneda){
   const errEl=document.getElementById("pf-import-err");
-  btn.disabled=true; btn.textContent="Importando…"; errEl.hidden=true;
+  errEl.hidden=true;
   try{
-    const fd=new FormData(); fd.append("file",file);
-    // X-Auth-Token evita conflictos con el boundary de multipart/form-data
+    const fd=new FormData();
+    fd.append("file",file);
+    fd.append("moneda",moneda);
     const importHeaders=window.__authToken?{"X-Auth-Token":window.__authToken}:{};
     const r=await fetch("/api/portfolio/import",{method:"POST",body:fd,headers:importHeaders});
     if(!r.ok){ let m=r.status; try{m=(await r.json()).error||m;}catch(_){} throw new Error(m); }
     const res=await r.json();
     errEl.hidden=false; errEl.style.background="var(--buy-bg)"; errEl.style.color="var(--buy)";
-    errEl.textContent=`✓ ${res.ok} posiciones importadas`+(res.errores?` (${res.errores} con error)`:"");
+    errEl.textContent=`✓ ${res.ok} posiciones ${moneda} importadas`+(res.errores?` (${res.errores} con error)`:"");
     await cargarPortfolioYAlertas();
   }catch(e){
     errEl.hidden=false; errEl.style.background="var(--sell-bg)"; errEl.style.color="var(--sell)";
     errEl.textContent="Error al importar: "+e.message;
   }
-  btn.disabled=false; btn.textContent="📥 Excel";
+}
+
+document.getElementById("btn-import-pf-ars").addEventListener("click",()=>{
+  document.getElementById("pf-file-input-ars").click();
+});
+document.getElementById("pf-file-input-ars").addEventListener("change", async ev=>{
+  const file=ev.target.files[0]; if(!file) return;
+  const btn=document.getElementById("btn-import-pf-ars");
+  btn.disabled=true; btn.textContent="Importando…";
+  await importarExcel(file,"ARS");
+  btn.disabled=false; btn.textContent="📥 ARS";
+  ev.target.value="";
+});
+
+document.getElementById("btn-import-pf-usd").addEventListener("click",()=>{
+  document.getElementById("pf-file-input-usd").click();
+});
+document.getElementById("pf-file-input-usd").addEventListener("change", async ev=>{
+  const file=ev.target.files[0]; if(!file) return;
+  const btn=document.getElementById("btn-import-pf-usd");
+  btn.disabled=true; btn.textContent="Importando…";
+  await importarExcel(file,"USD");
+  btn.disabled=false; btn.textContent="📥 USD";
   ev.target.value="";
 });
 
