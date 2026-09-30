@@ -467,11 +467,7 @@ def import_portfolio():
                 "activo": True,
                 "notas": f"Balanz import | rendimiento: {rendimiento_pct}% | días: {dias_tenencia}",
             }
-            res = db()._upsert("portfolio", payload, on_conflict="ticker")
-            # Si falla (columna moneda no existe aún), reintenta sin ella
-            if res is None:
-                payload.pop("moneda", None)
-                res = db()._upsert("portfolio", payload, on_conflict="ticker")
+            res = db()._upsert("portfolio", payload, on_conflict="ticker,moneda")
 
             if res is not None:
                 ok_list.append(ticker)
