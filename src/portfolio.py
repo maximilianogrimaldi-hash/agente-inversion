@@ -33,6 +33,13 @@ class PortfolioTracker:
             ticker = pos.get("ticker", "")
             cantidad = float(pos.get("cantidad", 0))
             precio_entrada = float(pos.get("precio_entrada", 0))
+            moneda = pos.get("moneda", "ARS")
+
+            # Snapshot tiene precios en ARS — no cruzar con posiciones en USD
+            if moneda == "USD":
+                results.append({**pos, "precio_actual": None, "pnl_pct": None, "pnl_abs": None})
+                continue
+
             precio_actual = current_prices.get(ticker)
 
             if precio_actual is None or precio_entrada == 0:
