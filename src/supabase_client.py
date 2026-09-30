@@ -107,6 +107,8 @@ class SupabaseClient:
 
     def save_snapshot(self, sig_dict: dict) -> dict | None:
         ind = sig_dict.get("indicadores", {}) or {}
+        # Nombre de empresa: puede venir en el sig_dict o en indicadores.fundamentales
+        nombre = sig_dict.get("nombre") or (ind.get("fundamentales") or {}).get("nombre") or ""
         payload = {
             "ticker": sig_dict.get("ticker"),
             "tipo": sig_dict.get("tipo"),
@@ -117,6 +119,7 @@ class SupabaseClient:
             "score": ind.get("score"),
             "motivos": sig_dict.get("motivos", []),
             "indicadores": ind,
+            "nombre": nombre,
             "actualizado_en": datetime.now(timezone.utc).isoformat(),
         }
         return self._upsert("snapshot", payload, on_conflict="ticker")

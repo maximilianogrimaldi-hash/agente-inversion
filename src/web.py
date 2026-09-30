@@ -153,7 +153,15 @@ def get_alertas():
 @require_auth
 def get_snapshot():
     """Estado actual de todos los instrumentos, con todos los indicadores."""
-    return jsonify(db().get_snapshots() or [])
+    from market_data import get_fundamentals
+    rows = db().get_snapshots() or []
+    # Enriquecer con nombre de empresa desde caché de fundamentales (sin llamadas extras)
+    for row in rows:
+        if not row.get("nombre"):
+            fund = cached(f"fund:{row['ticker']}", 21600, lambda t=row['ticker'], tp=row.get('tipo','CEDEAR'): get_fundamentals(t, tp))
+            if fund and fund.get("nombre"):
+                row["nombre"] = fund["nombre"]
+    return jsonify(rows)
 
 
 # ─── Caché simple en memoria para APIs externas ──────────────────────────
@@ -235,11 +243,37 @@ def get_screener():
     return jsonify(cached("screener", 3600, correr) or [])
 
 
+def _calcular_atr(highs, lows, closes, periodo=14):
+    """Average True Range de 'periodo' días. Devuelve el último ATR o None."""
+    if not highs or not lows or not closes:
+        return None
+    n = min(len(highs), len(lows), len(closes))
+    if n < periodo + 1:
+        return None
+    highs, lows, closes = highs[-n:], lows[-n:], closes[-n:]
+    trs = []
+    for i in range(1, n):
+        tr = max(
+            highs[i] - lows[i],
+            abs(highs[i] - closes[i-1]),
+            abs(lows[i] - closes[i-1]),
+        )
+        trs.append(tr)
+    if len(trs) < periodo:
+        return None
+    # Wilder's smoothing
+    atr = sum(trs[:periodo]) / periodo
+    for tr in trs[periodo:]:
+        atr = (atr * (periodo - 1) + tr) / periodo
+    return atr
+
+
 @app.get("/api/portfolio")
 @require_auth
 def get_portfolio_api():
-    """Posiciones con P&L calculado contra el precio actual."""
+    """Posiciones con P&L y stop loss ATR calculado."""
     from portfolio import PortfolioTracker
+    from market_data import get_series
 
     d = db()
     tracker = PortfolioTracker(d)
@@ -248,9 +282,40 @@ def get_portfolio_api():
         return jsonify({"posiciones": [], "total": None})
 
     # Reusa los precios del snapshot en vez de volver a pedirlos
-    precios = {s["ticker"]: float(s["precio"]) for s in (d.get_snapshots() or [])
-               if s.get("precio")}
+    snaps_map = {s["ticker"]: s for s in (d.get_snapshots() or []) if s.get("precio")}
+    precios = {tk: float(s["precio"]) for tk, s in snaps_map.items()}
     pnl = tracker.calculate_pnl(posiciones, precios)
+
+    # Agregar stop loss ATR por posición (solo CEDEARs, crypto tiene demasiada volatilidad)
+    for p in pnl:
+        tk = p.get("ticker")
+        tipo = p.get("tipo", "CEDEAR")
+        precio_entrada = p.get("precio_entrada")
+        if not tk or not precio_entrada or tipo == "CRYPTO":
+            continue
+        try:
+            serie = cached(
+                f"serie_atr:{tk}",
+                3600,
+                lambda t=tk, tp=tipo: get_series(t, tp, "3mo", "1d"),
+            )
+            atr = None
+            if serie:
+                atr = _calcular_atr(serie.get("highs", []), serie.get("lows", []), serie.get("closes", []))
+            if atr and atr > 0:
+                stop = round(precio_entrada - 2.5 * atr, 2)
+                dist_pct = round((stop / precio_entrada - 1) * 100, 1)
+                p["stop_loss"] = stop
+                p["stop_loss_pct"] = dist_pct
+                p["stop_tipo"] = "ATR"
+            else:
+                # Fallback: 8% fijo desde entrada
+                stop = round(precio_entrada * 0.92, 2)
+                p["stop_loss"] = stop
+                p["stop_loss_pct"] = -8.0
+                p["stop_tipo"] = "FIJO"
+        except Exception:
+            pass
 
     invertido = sum(float(p.get("cantidad", 0)) * float(p.get("precio_entrada", 0))
                     for p in pnl if p.get("precio_entrada"))
