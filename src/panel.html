@@ -150,6 +150,19 @@ section{min-width:0}
 .dolar-corr{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--ink-soft)}
 .dolar-corr strong{color:var(--ink)}
 
+/* ── Banner alertas portfolio ───────────────────────────── */
+#alert-banner{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.alert-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;font-size:13px;font-weight:500;border:1px solid;animation:alertIn .25s ease}
+@keyframes alertIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.alert-item.critica{background:var(--sell-bg);border-color:var(--sell);color:var(--sell)}
+.alert-item.atencion{background:var(--watch-bg);border-color:var(--watch);color:var(--watch)}
+.alert-item.oport{background:var(--buy-bg);border-color:var(--buy);color:var(--buy)}
+.alert-icon{font-size:17px;flex-shrink:0;line-height:1}
+.alert-texto{flex:1;min-width:0}
+.alert-tk{font-family:var(--font-mono);font-weight:700;margin-right:5px}
+.alert-accion{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;white-space:nowrap;margin-left:auto;flex-shrink:0}
+.alert-accion:hover{filter:brightness(.9)}
+
 /* Plazos en tarjeta ────────────────────────────────────── */
 .plazos-card{display:flex; gap:5px; align-items:center; margin-top:6px}
 .pz{display:inline-flex; align-items:center; gap:3px; font-size:10px; font-family:var(--font-mono); padding:2px 7px; border-radius:4px; background:var(--neutral-bg); color:var(--ink-soft)}
@@ -224,6 +237,8 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
     </div>
   </div>
 </header>
+
+<div id="alert-banner"></div>
 
 <div id="semaforos-globales" class="semaforos-globales"></div>
 
@@ -872,7 +887,7 @@ document.getElementById("pf-file-input").addEventListener("change", async ev=>{
     const res=await r.json();
     errEl.hidden=false; errEl.style.background="var(--buy-bg)"; errEl.style.color="var(--buy)";
     errEl.textContent=`✓ ${res.ok} posiciones importadas`+(res.errores?` (${res.errores} con error)`:"");
-    await cargarPortfolio();
+    await cargarPortfolioYAlertas();
   }catch(e){
     errEl.hidden=false; errEl.style.background="var(--sell-bg)"; errEl.style.color="var(--sell)";
     errEl.textContent="Error al importar: "+e.message;
@@ -1062,8 +1077,80 @@ document.getElementById("filters").addEventListener("click", ev=>{
   render();
 });
 
+// ── Alertas portfolio ──────────────────────────────────────────────
+let _pfPos=[], _pfSnaps=[];
+
+async function cargarPortfolioYAlertas(){
+  await cargarPortfolio();
+  // Leer posiciones del DOM sería frágil; las leemos de la API de nuevo
+  try{ const d=await api("portfolio"); _pfPos=d.posiciones||[]; }catch(_){}
+  evaluarAlertasPortfolio();
+}
+
+function evaluarAlertasPortfolio(){
+  const banner=document.getElementById("alert-banner");
+  if(!_pfPos.length){ banner.innerHTML=""; return; }
+  const alertas=[];
+
+  for(const p of _pfPos){
+    const tk=p.ticker;
+    // Cruzar con snapshot para señal del agente
+    const snap=_pfSnaps.find(s=>s.ticker===tk)||snaps.find(s=>s.ticker===tk);
+    const senal=snap?.senal||snap?.señal||snap?.recomendacion||"";
+    const pnl=p.pnl_pct;
+
+    // CRÍTICA: posición con pérdida > 15% y señal SELL
+    if(pnl!=null && pnl<=-15 && /sell|venta/i.test(senal)){
+      alertas.push({nivel:"critica",icon:"🚨",ticker:tk,
+        texto:`Pérdida de ${num(pnl,1)}% · El agente recomienda <strong>VENDER</strong>. Revisar stop-loss.`});
+    }
+    // CRÍTICA: señal SELL en posición que tenés
+    else if(/sell|venta/i.test(senal)){
+      alertas.push({nivel:"critica",icon:"🔴",ticker:tk,
+        texto:`Señal <strong>VENTA</strong> activa. Considerá reducir o salir de la posición.`});
+    }
+    // ATENCIÓN: pérdida > 10%
+    else if(pnl!=null && pnl<=-10){
+      alertas.push({nivel:"atencion",icon:"⚠️",ticker:tk,
+        texto:`Posición en rojo ${num(pnl,1)}%. Revisá si el tesis de inversión sigue en pie.`});
+    }
+    // ATENCIÓN: señal WATCH y pérdida
+    else if(/watch|atenci/i.test(senal) && pnl!=null && pnl<0){
+      alertas.push({nivel:"atencion",icon:"👀",ticker:tk,
+        texto:`Señal <strong>ATENCIÓN</strong> y en rojo ${num(pnl,1)}%. Monitorear de cerca.`});
+    }
+    // OPORTUNIDAD: señal BUY en posición que ya tenés (podés promediar)
+    else if(/buy|compra/i.test(senal) && pnl!=null && pnl<-5){
+      alertas.push({nivel:"oport",icon:"💡",ticker:tk,
+        texto:`Señal <strong>COMPRA</strong> con posición en rojo ${num(pnl,1)}%. Oportunidad de promedio.`});
+    }
+    // OPORTUNIDAD: ganancia > 30% y señal SELL (tomar ganancias)
+    else if(pnl!=null && pnl>=30 && /sell|venta/i.test(senal)){
+      alertas.push({nivel:"oport",icon:"💰",ticker:tk,
+        texto:`+${num(pnl,1)}% de ganancia y señal <strong>VENTA</strong>. Considerá tomar ganancias.`});
+    }
+  }
+
+  if(!alertas.length){ banner.innerHTML=""; return; }
+
+  banner.innerHTML=alertas.map(a=>`
+    <div class="alert-item ${a.nivel}">
+      <span class="alert-icon">${a.icon}</span>
+      <span class="alert-texto"><span class="alert-tk">${esc(a.ticker)}</span>${a.texto}</span>
+      <button class="alert-accion" onclick="abrirFundamentales('${esc(a.ticker)}')">Ver análisis →</button>
+    </div>`).join("");
+}
+
+// Redefinir cargarSnapshot para actualizar alertas al llegar snaps
+const _cargarSnapshotOrig=cargarSnapshot;
+cargarSnapshot=async function(){
+  await _cargarSnapshotOrig();
+  _pfSnaps=snaps;
+  evaluarAlertasPortfolio();
+};
+
 cargarContexto(); cargarSnapshot(); cargarWatchlist();
-cargarPortfolio(); cargarNoticias(); cargarScreener();
+cargarPortfolioYAlertas(); cargarNoticias(); cargarScreener();
 setInterval(cargarSnapshot,120000);
 </script>
 </body>
