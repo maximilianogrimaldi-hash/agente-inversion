@@ -125,6 +125,36 @@ def get_series(ticker: str, tipo: str = "CEDEAR", rango: str = "1y", intervalo: 
     return _cached(f"serie:{sym}:{rango}:{intervalo}", 1800, traer)
 
 
+def get_usd_prices(tickers: list[str]) -> dict[str, float]:
+    """
+    Precio actual en USD para una lista de tickers (subyacentes NYSE/NASDAQ).
+    Usa Yahoo Finance chart endpoint con range=1d interval=1m.
+    Devuelve {ticker: precio_usd}.
+    """
+    precios = {}
+    for ticker in tickers:
+        sym = ALIAS.get(ticker, ticker)
+        def traer(s=sym):
+            r = requests.get(
+                CHART_URL.format(symbol=s),
+                params={"range": "1d", "interval": "1m"},
+                headers=UA, timeout=TIMEOUT,
+            )
+            if r.status_code != 200:
+                return None
+            res = (r.json().get("chart") or {}).get("result") or []
+            if not res:
+                return None
+            q = (res[0].get("indicators", {}).get("quote") or [{}])[0]
+            closes = [c for c in (q.get("close") or []) if c is not None]
+            return closes[-1] if closes else None
+
+        precio = _cached(f"usd_price:{sym}", 300, traer)  # caché 5 min
+        if precio is not None:
+            precios[ticker] = round(float(precio), 4)
+    return precios
+
+
 # ─── Fundamentales ───────────────────────────────────────────────────────
 
 MODULOS = "summaryDetail,defaultKeyStatistics,financialData,calendarEvents,price"
