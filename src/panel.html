@@ -815,7 +815,7 @@ async function cargarContexto(){
     if(d.oficial) h+=ctxCard("Oficial","$"+num(d.oficial,0),"");
     if(d.blue)    h+=ctxCard("Blue","$"+num(d.blue,0), d.spread_blue_pct!=null?`brecha ${num(d.spread_blue_pct,1)}%`:"");
     if(d.mep)     h+=ctxCard("MEP","$"+num(d.mep,0),"");
-    if(d.ccl)     h+=ctxCard("CCL","$"+num(d.ccl,0),"");
+    if(d.ccl){ h+=ctxCard("CCL","$"+num(d.ccl,0),""); window._ccl=d.ccl; }
     // Feature 4: VIX
     if(c.vix != null){
       const vixVal = Number(c.vix);
@@ -841,20 +841,36 @@ async function cargarSnapshot(){
   }catch(e){ errBox("snap-err",e); }
 }
 
-function renderPosiciones(posiciones, moneda){
+// CCL actual (se llena cuando carga el contexto)
+window._ccl = null;
+
+function renderPosiciones(posiciones, moneda, enUsd){
   if(!posiciones||!posiciones.length) return "";
+  const ccl = window._ccl;
+  const usarUsd = enUsd && moneda==="ARS" && ccl && ccl>0;
   let h=`<div class="mini">`;
   for(const p of posiciones){
     const pc=p.pnl_pct;
     const pclsCls=pc==null?"":pc>=0?"ok":"bad";
     const rend=pc==null?"—":(pc>=0?"+":"")+num(pc,2)+"%";
     const cant=p.cantidad!=null?num(p.cantidad,0)+"u":null;
-    const sym=moneda==="USD"?"U$S ":"$";
-    const entrada=p.precio_entrada!=null?sym+num(p.precio_entrada,0):null;
-    const stopHtml=p.stop_loss!=null?`
+
+    let sym, entradaVal, stopVal;
+    if(usarUsd){
+      sym="U$S ";
+      entradaVal=p.precio_entrada!=null?p.precio_entrada/ccl:null;
+      stopVal=p.stop_loss!=null?p.stop_loss/ccl:null;
+    } else {
+      sym=moneda==="USD"?"U$S ":"$";
+      entradaVal=p.precio_entrada!=null?p.precio_entrada:null;
+      stopVal=p.stop_loss!=null?p.stop_loss:null;
+    }
+
+    const entrada=entradaVal!=null?sym+num(entradaVal, usarUsd?2:0):null;
+    const stopHtml=stopVal!=null?`
       <div style="width:100%;margin-top:3px;display:flex;align-items:center;gap:6px">
         <span style="font-size:10px;font-weight:600;color:var(--ink-faint);letter-spacing:.04em;text-transform:uppercase">Stop${p.stop_tipo==='ATR'?' ATR':''}</span>
-        <span style="font-family:var(--font-mono);font-size:11px;color:var(--sell);font-weight:600">${sym}${num(p.stop_loss,0)}</span>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--sell);font-weight:600">${sym}${num(stopVal, usarUsd?2:0)}</span>
         <span style="font-size:10px;color:var(--ink-faint)">(${num(p.stop_loss_pct,1)}% desde entrada)</span>
         ${p.precio_actual!=null&&p.stop_loss>p.precio_actual?`<span style="font-size:10px;font-weight:700;color:var(--sell);background:var(--sell-bg);padding:1px 5px;border-radius:3px">⚠ STOP TOCADO</span>`:""}
       </div>`:"";
@@ -887,36 +903,53 @@ async function cargarPortfolio(){
     const arsPos=(d.posiciones||[]).filter(p=>!p.moneda||p.moneda==="ARS");
     const usdPos=(d.posiciones||[]).filter(p=>p.moneda==="USD");
     const hasBoth=arsPos.length>0&&usdPos.length>0;
+    window._pfArsData={pos:arsPos,total:d.total_ars};
+    window._pfUsdData={pos:usdPos,total:d.total_usd};
+    window._pfEnUsd=false;
 
-    function tabContent(pos, moneda, total){
+    function tabContent(pos, moneda, total, enUsd){
+      const ccl=window._ccl;
+      const usarUsd=enUsd&&moneda==="ARS"&&ccl&&ccl>0;
+      const sym=usarUsd?"U$S ":moneda==="USD"?"U$S ":"$";
       let h="";
       if(total){
         const cls=total.pnl_pct>=0?"up":"dn";
-        const sym=moneda==="USD"?"U$S ":"$";
-        h+=`<div class="total"><span class="ctx-lbl">Cartera ${moneda}</span>
-          <div class="total-val">${sym}${num(total.actual,0)}</div>
-          <span class="ctx-sub ${cls}">${total.pnl_pct>=0?"+":""}${total.pnl_pct}% · ${sym}${num(total.pnl_abs,0)}</span></div>`;
+        const actualMostrar=usarUsd?total.actual/ccl:total.actual;
+        const pnlMostrar=usarUsd?total.pnl_abs/ccl:total.pnl_abs;
+        const decimales=usarUsd||moneda==="USD"?0:0;
+        h+=`<div class="total">`;
+        if(moneda==="ARS"){
+          h+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span class="ctx-lbl">Cartera CEDEARs</span>
+            <span style="display:flex;gap:2px;margin-left:auto">
+              <button id="pf-toggle-ars" onclick="pfToggleUsd(false)" style="font-size:10px;padding:2px 8px;border-radius:4px 0 0 4px;border:1px solid var(--line);cursor:pointer;font-weight:600;${!enUsd?'background:var(--accent);color:#fff':'background:var(--surface);color:var(--ink-soft)'}">$ ARS</button>
+              <button id="pf-toggle-usd" onclick="pfToggleUsd(true)" style="font-size:10px;padding:2px 8px;border-radius:0 4px 4px 0;border:1px solid var(--line);border-left:none;cursor:pointer;font-weight:600;${enUsd?'background:var(--accent);color:#fff':'background:var(--surface);color:var(--ink-soft)'}">U$S CCL</button>
+            </span>
+          </div>`;
+        } else {
+          h+=`<span class="ctx-lbl">Cartera USD</span>`;
+        }
+        h+=`<div class="total-val">${sym}${num(actualMostrar,decimales)}</div>
+          <span class="ctx-sub ${cls}">${total.pnl_pct>=0?"+":""}${total.pnl_pct}% · ${sym}${num(pnlMostrar,decimales)}</span></div>`;
       } else {
         h+=`<div class="total"><span class="ctx-lbl">Cartera ${moneda}</span></div>`;
       }
-      h+=renderPosiciones(pos, moneda);
+      h+=renderPosiciones(pos, moneda, enUsd);
       return h;
     }
 
     if(hasBoth){
       box.innerHTML=`
         <div style="display:flex;gap:4px;margin-bottom:10px">
-          <button id="tab-ars" onclick="pfTab('ARS')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">🪙 ARS (${arsPos.length})</button>
+          <button id="tab-ars" onclick="pfTab('ARS')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">🪙 CEDEARs (${arsPos.length})</button>
           <button id="tab-usd" onclick="pfTab('USD')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--ink-soft)">💵 USD (${usdPos.length})</button>
         </div>
-        <div id="pf-tab-ars">${tabContent(arsPos,"ARS",d.total_ars)}</div>
-        <div id="pf-tab-usd" hidden>${tabContent(usdPos,"USD",d.total_usd)}</div>`;
-      window._pfArsData={pos:arsPos,total:d.total_ars};
-      window._pfUsdData={pos:usdPos,total:d.total_usd};
+        <div id="pf-tab-ars">${tabContent(arsPos,"ARS",d.total_ars,false)}</div>
+        <div id="pf-tab-usd" hidden>${tabContent(usdPos,"USD",d.total_usd,false)}</div>`;
     } else if(arsPos.length){
-      box.innerHTML=tabContent(arsPos,"ARS",d.total_ars);
+      box.innerHTML=tabContent(arsPos,"ARS",d.total_ars,false);
     } else if(usdPos.length){
-      box.innerHTML=tabContent(usdPos,"USD",d.total_usd);
+      box.innerHTML=tabContent(usdPos,"USD",d.total_usd,false);
     }
   }catch(e){ box.innerHTML=`<div class="empty">No pude leer el portfolio.</div>`; }
 }
@@ -1004,6 +1037,37 @@ function pfTab(moneda){
   const inactiveStyle="background:var(--surface);color:var(--ink-soft)";
   document.getElementById("tab-ars").style.cssText=`flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;${isArs?activeStyle:inactiveStyle}`;
   document.getElementById("tab-usd").style.cssText=`flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;${!isArs?activeStyle:inactiveStyle}`;
+}
+
+function pfToggleUsd(enUsd){
+  window._pfEnUsd=enUsd;
+  const d=window._pfArsData;
+  if(!d) return;
+  const tabArs=document.getElementById("pf-tab-ars");
+  if(!tabArs) return;
+  // Reconstruir solo el contenido de la tab ARS
+  const ccl=window._ccl;
+  const usarUsd=enUsd&&ccl&&ccl>0;
+  const sym=usarUsd?"U$S ":"$";
+  const total=d.total;
+  let h="";
+  if(total){
+    const cls=total.pnl_pct>=0?"up":"dn";
+    const actualMostrar=usarUsd?total.actual/ccl:total.actual;
+    const pnlMostrar=usarUsd?total.pnl_abs/ccl:total.pnl_abs;
+    h+=`<div class="total">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <span class="ctx-lbl">Cartera CEDEARs</span>
+        <span style="display:flex;gap:2px;margin-left:auto">
+          <button onclick="pfToggleUsd(false)" style="font-size:10px;padding:2px 8px;border-radius:4px 0 0 4px;border:1px solid var(--line);cursor:pointer;font-weight:600;${!enUsd?'background:var(--accent);color:#fff':'background:var(--surface);color:var(--ink-soft)'}">$ ARS</button>
+          <button onclick="pfToggleUsd(true)" style="font-size:10px;padding:2px 8px;border-radius:0 4px 4px 0;border:1px solid var(--line);border-left:none;cursor:pointer;font-weight:600;${enUsd?'background:var(--accent);color:#fff':'background:var(--surface);color:var(--ink-soft)'}">U$S CCL</button>
+        </span>
+      </div>
+      <div class="total-val">${sym}${num(actualMostrar,0)}</div>
+      <span class="ctx-sub ${cls}">${total.pnl_pct>=0?"+":""}${total.pnl_pct}% · ${sym}${num(pnlMostrar,0)}</span></div>`;
+  }
+  h+=renderPosiciones(d.pos,"ARS",enUsd);
+  tabArs.innerHTML=h;
 }
 
 async function abrirFundamentales(ticker){
