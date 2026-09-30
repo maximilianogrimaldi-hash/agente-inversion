@@ -883,35 +883,41 @@ async function cargarPortfolio(){
       return;
     }
     document.getElementById("pf-count").textContent=`${total} posiciones`;
-    let h="";
 
-    // Sección ARS
     const arsPos=(d.posiciones||[]).filter(p=>!p.moneda||p.moneda==="ARS");
-    if(arsPos.length){
-      const t=d.total_ars;
-      if(t){
-        const cls=t.pnl_pct>=0?"up":"dn";
-        h+=`<div class="total"><span class="ctx-lbl">Cartera ARS</span>
-          <div class="total-val">$${num(t.actual,0)}</div>
-          <span class="ctx-sub ${cls}">${t.pnl_pct>=0?"+":""}${t.pnl_pct}% · $${num(t.pnl_abs,0)}</span></div>`;
-      }
-      h+=renderPosiciones(arsPos,"ARS");
-    }
-
-    // Sección USD
     const usdPos=(d.posiciones||[]).filter(p=>p.moneda==="USD");
-    if(usdPos.length){
-      const t=d.total_usd;
-      if(t){
-        const cls=t.pnl_pct>=0?"up":"dn";
-        h+=`<div class="total" style="margin-top:12px"><span class="ctx-lbl">Cartera USD</span>
-          <div class="total-val">U$S ${num(t.actual,0)}</div>
-          <span class="ctx-sub ${cls}">${t.pnl_pct>=0?"+":""}${t.pnl_pct}% · U$S ${num(t.pnl_abs,0)}</span></div>`;
+    const hasBoth=arsPos.length>0&&usdPos.length>0;
+
+    function tabContent(pos, moneda, total){
+      let h="";
+      if(total){
+        const cls=total.pnl_pct>=0?"up":"dn";
+        const sym=moneda==="USD"?"U$S ":"$";
+        h+=`<div class="total"><span class="ctx-lbl">Cartera ${moneda}</span>
+          <div class="total-val">${sym}${num(total.actual,0)}</div>
+          <span class="ctx-sub ${cls}">${total.pnl_pct>=0?"+":""}${total.pnl_pct}% · ${sym}${num(total.pnl_abs,0)}</span></div>`;
+      } else {
+        h+=`<div class="total"><span class="ctx-lbl">Cartera ${moneda}</span></div>`;
       }
-      h+=renderPosiciones(usdPos,"USD");
+      h+=renderPosiciones(pos, moneda);
+      return h;
     }
 
-    box.innerHTML=h;
+    if(hasBoth){
+      box.innerHTML=`
+        <div style="display:flex;gap:4px;margin-bottom:10px">
+          <button id="tab-ars" onclick="pfTab('ARS')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">🪙 ARS (${arsPos.length})</button>
+          <button id="tab-usd" onclick="pfTab('USD')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--ink-soft)">💵 USD (${usdPos.length})</button>
+        </div>
+        <div id="pf-tab-ars">${tabContent(arsPos,"ARS",d.total_ars)}</div>
+        <div id="pf-tab-usd" hidden>${tabContent(usdPos,"USD",d.total_usd)}</div>`;
+      window._pfArsData={pos:arsPos,total:d.total_ars};
+      window._pfUsdData={pos:usdPos,total:d.total_usd};
+    } else if(arsPos.length){
+      box.innerHTML=tabContent(arsPos,"ARS",d.total_ars);
+    } else if(usdPos.length){
+      box.innerHTML=tabContent(usdPos,"USD",d.total_usd);
+    }
   }catch(e){ box.innerHTML=`<div class="empty">No pude leer el portfolio.</div>`; }
 }
 
@@ -989,6 +995,16 @@ document.getElementById("fund-modal").addEventListener("click", ev=>{
   if(ev.target===ev.currentTarget) cerrarFundamentales();
 });
 document.addEventListener("keydown", ev=>{ if(ev.key==="Escape") cerrarFundamentales(); });
+
+function pfTab(moneda){
+  const isArs=moneda==="ARS";
+  document.getElementById("pf-tab-ars").hidden=!isArs;
+  document.getElementById("pf-tab-usd").hidden=isArs;
+  const activeStyle="background:var(--accent);color:#fff";
+  const inactiveStyle="background:var(--surface);color:var(--ink-soft)";
+  document.getElementById("tab-ars").style.cssText=`flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;${isArs?activeStyle:inactiveStyle}`;
+  document.getElementById("tab-usd").style.cssText=`flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;${!isArs?activeStyle:inactiveStyle}`;
+}
 
 async function abrirFundamentales(ticker){
   const modal=document.getElementById("fund-modal");
