@@ -311,8 +311,9 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
 </footer>
 
 <script>
+function authHeader(){ return window.__authToken ? {"Authorization":"Basic "+window.__authToken} : {}; }
 async function api(path, opts={}){
-  const r = await fetch("/api/"+path, {...opts, headers:{"Content-Type":"application/json", ...(opts.headers||{})}});
+  const r = await fetch("/api/"+path, {...opts, headers:{"Content-Type":"application/json", ...authHeader(), ...(opts.headers||{})}});
   if(!r.ok){ let m=r.status; try{ m=(await r.json()).error||m; }catch(_){} throw new Error(m); }
   return r.status === 204 ? null : r.json();
 }
@@ -866,7 +867,7 @@ document.getElementById("pf-file-input").addEventListener("change", async ev=>{
   btn.disabled=true; btn.textContent="Importando…"; errEl.hidden=true;
   try{
     const fd=new FormData(); fd.append("file",file);
-    const r=await fetch("/api/portfolio/import",{method:"POST",body:fd});
+    const r=await fetch("/api/portfolio/import",{method:"POST",body:fd,headers:authHeader()});
     if(!r.ok){ let m=r.status; try{m=(await r.json()).error||m;}catch(_){} throw new Error(m); }
     const res=await r.json();
     errEl.hidden=false; errEl.style.background="var(--buy-bg)"; errEl.style.color="var(--buy)";
@@ -923,7 +924,7 @@ async function abrirFundamentales(ticker){
   document.getElementById("fund-riesgos").innerHTML="";
   document.getElementById("fund-datos").innerHTML="";
   try{
-    const d=await fetch("/api/fundamentals/"+encodeURIComponent(ticker),{headers:{"Content-Type":"application/json"}})
+    const d=await fetch("/api/fundamentals/"+encodeURIComponent(ticker),{headers:{"Content-Type":"application/json",...authHeader()}})
       .then(async r=>{ if(!r.ok){ let m=r.status; try{m=(await r.json()).error||m;}catch(_){} throw new Error(m); } return r.json(); });
 
     const rec=d.recomendacion||{};

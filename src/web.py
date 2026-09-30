@@ -76,7 +76,12 @@ def require_auth(fn):
 def panel():
     if not PANEL_HTML.exists():
         return Response("panel.html no encontrado", 500)
-    return Response(PANEL_HTML.read_text(encoding="utf-8"), mimetype="text/html")
+    html = PANEL_HTML.read_text(encoding="utf-8")
+    # Inyectar credenciales como variable JS para que fetch las use en API calls
+    auth_token = base64.b64encode(f"{PANEL_USER}:{PANEL_PASS}".encode()).decode()
+    inject = f'<script>window.__authToken="{auth_token}";</script>'
+    html = html.replace("<script>", inject + "\n<script>", 1)
+    return Response(html, mimetype="text/html")
 
 
 @app.get("/health")
