@@ -326,9 +326,13 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
 </footer>
 
 <script>
-function authHeader(){ return window.__authToken ? {"Authorization":"Basic "+window.__authToken} : {}; }
-// Debug: verificar que el token fue inyectado
-if(!window.__authToken){ console.warn("[auth] __authToken no definido — el panel puede tener errores 401"); }
+function authHeader(){ return window.__authToken ? {"Authorization":"Basic "+window.__authToken,"X-Auth-Token":window.__authToken} : {}; }
+// Setear cookie de sesión para que requests multipart también estén autenticados
+if(window.__authToken){
+  document.cookie="__authToken="+window.__authToken+";path=/;SameSite=Strict";
+}else{
+  console.warn("[auth] __authToken no definido — el panel puede tener errores 401");
+}
 async function api(path, opts={}){
   const r = await fetch("/api/"+path, {...opts, headers:{"Content-Type":"application/json", ...authHeader(), ...(opts.headers||{})}});
   if(!r.ok){ let m=r.status; try{ m=(await r.json()).error||m; }catch(_){} throw new Error(m); }
@@ -893,7 +897,9 @@ document.getElementById("pf-file-input").addEventListener("change", async ev=>{
   btn.disabled=true; btn.textContent="Importando…"; errEl.hidden=true;
   try{
     const fd=new FormData(); fd.append("file",file);
-    const r=await fetch("/api/portfolio/import",{method:"POST",body:fd,headers:authHeader()});
+    // X-Auth-Token evita conflictos con el boundary de multipart/form-data
+    const importHeaders=window.__authToken?{"X-Auth-Token":window.__authToken}:{};
+    const r=await fetch("/api/portfolio/import",{method:"POST",body:fd,headers:importHeaders});
     if(!r.ok){ let m=r.status; try{m=(await r.json()).error||m;}catch(_){} throw new Error(m); }
     const res=await r.json();
     errEl.hidden=false; errEl.style.background="var(--buy-bg)"; errEl.style.color="var(--buy)";

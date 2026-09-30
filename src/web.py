@@ -44,24 +44,39 @@ def _check(user: str, pw: str) -> bool:
     return hmac.compare_digest(user, PANEL_USER) and hmac.compare_digest(pw, PANEL_PASS)
 
 
+def _valid_token(token: str) -> bool:
+    """Valida un token Base64(user:pass) igual al que inyectamos en el panel."""
+    try:
+        raw = base64.b64decode(token).decode("utf-8")
+        user, _, pw = raw.partition(":")
+        return _check(user, pw)
+    except Exception:
+        return False
+
+
 def require_auth(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
+        # 1. Header Authorization: Basic ...
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Basic "):
-            try:
-                raw = base64.b64decode(auth[6:]).decode("utf-8")
-                user, _, pw = raw.partition(":")
-                if _check(user, pw):
-                    return fn(*a, **kw)
-                else:
-                    logger.warning(f"require_auth: credenciales incorrectas para {request.path} (user={user!r})")
-            except Exception as e:
-                logger.warning(f"require_auth: error decodificando auth en {request.path}: {e}")
-        else:
-            logger.warning(f"require_auth: sin header Authorization en {request.path} (header={auth!r})")
-        # Para rutas /api/, devolver JSON sin WWW-Authenticate
-        # para que el browser no muestre el diálogo nativo de auth
+            if _valid_token(auth[6:]):
+                return fn(*a, **kw)
+            logger.warning(f"require_auth: Basic inválido en {request.path}")
+
+        # 2. Header X-Auth-Token (no lo tocan los proxies)
+        x_token = request.headers.get("X-Auth-Token", "")
+        if x_token and _valid_token(x_token):
+            return fn(*a, **kw)
+
+        # 3. Cookie de sesión (para requests del panel ya autenticado)
+        cookie_token = request.cookies.get("__authToken", "")
+        if cookie_token and _valid_token(cookie_token):
+            return fn(*a, **kw)
+
+        if not auth and not x_token and not cookie_token:
+            logger.warning(f"require_auth: sin credenciales en {request.path}")
+
         if request.path.startswith("/api/"):
             return jsonify({"error": "No autorizado"}), 401
         return Response(
