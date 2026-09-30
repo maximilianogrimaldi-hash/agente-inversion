@@ -309,28 +309,27 @@ def get_portfolio_api():
     snaps_map = {s["ticker"]: s for s in (d.get_snapshots() or []) if s.get("precio")}
     precios_ars = {tk: float(s["precio"]) for tk, s in snaps_map.items()}
 
-    # Precios USD desde Yahoo para posiciones en dólares
-    from market_data import get_usd_prices
-    tickers_usd = [p["ticker"] for p in posiciones if p.get("moneda") == "USD"]
-    precios_usd = cached("precios_usd", 300, lambda: get_usd_prices(tickers_usd)) if tickers_usd else {}
+    # Calcular PnL: ARS usa snapshot
+    pnl = tracker.calculate_pnl(posiciones, precios_ars)
 
-    # Calcular PnL: ARS usa snapshot, USD usa Yahoo directo
-    precios_combinados = {**precios_ars}
-    # Para posiciones USD, inyectar precio USD en el mapa con una clave especial
-    # portfolio.py ya excluye USD del cruce ARS, así que calculamos PnL USD acá
-    pnl = tracker.calculate_pnl(posiciones, precios_combinados)
-
-    # Completar PnL para posiciones USD con precios reales
+    # PnL para posiciones USD: usar rendimiento de Balanz (en notas) + precio entrada CEDEAR
+    # Los precios de CEDEARs en USD no son comparables con NYSE vía Yahoo (ratio distinto)
+    import re
     for p in pnl:
         if p.get("moneda") == "USD" and p.get("pnl_pct") is None:
-            ticker = p.get("ticker")
-            precio_usd = precios_usd.get(ticker)
-            precio_entrada = float(p.get("precio_entrada", 0))
-            cantidad = float(p.get("cantidad", 0))
-            if precio_usd and precio_entrada > 0:
-                p["precio_actual"] = precio_usd
-                p["pnl_pct"] = round((precio_usd - precio_entrada) / precio_entrada * 100, 2)
-                p["pnl_abs"] = round((precio_usd - precio_entrada) * cantidad, 2)
+            notas = p.get("notas") or ""
+            # Parsear "rendimiento: 21.98%" de las notas del import de Balanz
+            m = re.search(r"rendimiento:\s*([-\d.]+)%", notas)
+            if m:
+                pnl_pct = float(m.group(1))
+                precio_entrada = float(p.get("precio_entrada", 0))
+                cantidad = float(p.get("cantidad", 0))
+                precio_actual = round(precio_entrada * (1 + pnl_pct / 100), 4)
+                pnl_abs = round((precio_actual - precio_entrada) * cantidad, 2)
+                p["precio_actual"] = precio_actual
+                p["pnl_pct"] = pnl_pct
+                p["pnl_abs"] = pnl_abs
+                p["pnl_fuente"] = "balanz"
 
     # Agregar stop loss ATR por posición (solo CEDEARs, crypto tiene demasiada volatilidad)
     for p in pnl:
