@@ -938,18 +938,26 @@ async function cargarPortfolio(){
       return h;
     }
 
+    // Siempre mostrar tabs si hay posiciones en alguna moneda
+    const tabsHtml=`<div style="display:flex;gap:4px;margin-bottom:10px">
+      <button id="tab-ars" onclick="pfTab('ARS')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">🪙 CEDEARs${arsPos.length?` (${arsPos.length})`:''}</button>
+      <button id="tab-usd" onclick="pfTab('USD')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--ink-soft)">💵 USD${usdPos.length?` (${usdPos.length})`:''}</button>
+    </div>`;
     if(hasBoth){
-      box.innerHTML=`
-        <div style="display:flex;gap:4px;margin-bottom:10px">
-          <button id="tab-ars" onclick="pfTab('ARS')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff">🪙 CEDEARs (${arsPos.length})</button>
-          <button id="tab-usd" onclick="pfTab('USD')" style="flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--ink-soft)">💵 USD (${usdPos.length})</button>
-        </div>
-        <div id="pf-tab-ars">${tabContent(arsPos,"ARS",d.total_ars,false)}</div>
+      box.innerHTML=tabsHtml+
+        `<div id="pf-tab-ars">${tabContent(arsPos,"ARS",d.total_ars,false)}</div>
         <div id="pf-tab-usd" hidden>${tabContent(usdPos,"USD",d.total_usd,false)}</div>`;
     } else if(arsPos.length){
-      box.innerHTML=tabContent(arsPos,"ARS",d.total_ars,false);
+      box.innerHTML=tabsHtml+
+        `<div id="pf-tab-ars">${tabContent(arsPos,"ARS",d.total_ars,false)}</div>
+        <div id="pf-tab-usd" hidden><div class="empty">No hay posiciones USD</div></div>`;
     } else if(usdPos.length){
-      box.innerHTML=tabContent(usdPos,"USD",d.total_usd,false);
+      box.innerHTML=tabsHtml+
+        `<div id="pf-tab-ars" hidden><div class="empty">No hay posiciones CEDEARs</div></div>
+        <div id="pf-tab-usd">${tabContent(usdPos,"USD",d.total_usd,false)}</div>`;
+      // Activar tab USD
+      document.getElementById("tab-ars").style.cssText=`flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--ink-soft)`;
+      document.getElementById("tab-usd").style.cssText=`flex:1;padding:6px 0;border-radius:6px;border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff`;
     }
   }catch(e){ box.innerHTML=`<div class="empty">No pude leer el portfolio.</div>`; }
 }
