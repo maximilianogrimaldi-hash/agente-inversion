@@ -327,6 +327,8 @@ footer{margin-top:32px; padding-top:15px; border-top:1px solid var(--line); font
 
 <script>
 function authHeader(){ return window.__authToken ? {"Authorization":"Basic "+window.__authToken} : {}; }
+// Debug: verificar que el token fue inyectado
+if(!window.__authToken){ console.warn("[auth] __authToken no definido — el panel puede tener errores 401"); }
 async function api(path, opts={}){
   const r = await fetch("/api/"+path, {...opts, headers:{"Content-Type":"application/json", ...authHeader(), ...(opts.headers||{})}});
   if(!r.ok){ let m=r.status; try{ m=(await r.json()).error||m; }catch(_){} throw new Error(m); }

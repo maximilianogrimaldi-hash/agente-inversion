@@ -54,8 +54,12 @@ def require_auth(fn):
                 user, _, pw = raw.partition(":")
                 if _check(user, pw):
                     return fn(*a, **kw)
-            except Exception:
-                pass
+                else:
+                    logger.warning(f"require_auth: credenciales incorrectas para {request.path} (user={user!r})")
+            except Exception as e:
+                logger.warning(f"require_auth: error decodificando auth en {request.path}: {e}")
+        else:
+            logger.warning(f"require_auth: sin header Authorization en {request.path} (header={auth!r})")
         # Para rutas /api/, devolver JSON sin WWW-Authenticate
         # para que el browser no muestre el diálogo nativo de auth
         if request.path.startswith("/api/"):
@@ -79,8 +83,13 @@ def panel():
     html = PANEL_HTML.read_text(encoding="utf-8")
     # Inyectar credenciales como variable JS para que fetch las use en API calls
     auth_token = base64.b64encode(f"{PANEL_USER}:{PANEL_PASS}".encode()).decode()
-    inject = f'<script>window.__authToken="{auth_token}";</script>'
-    html = html.replace("<script>", inject + "\n<script>", 1)
+    inject = f'<script>window.__authToken="{auth_token}";</script>\n'
+    # Inyectar antes de </head> — más robusto que buscar primer <script>
+    if "</head>" in html:
+        html = html.replace("</head>", inject + "</head>", 1)
+    else:
+        # Fallback: antes del primer <script>
+        html = html.replace("<script>", inject + "<script>", 1)
     return Response(html, mimetype="text/html")
 
 
