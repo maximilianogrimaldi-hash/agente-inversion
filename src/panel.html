@@ -1244,7 +1244,18 @@ function evaluarAlertasPortfolio(){
   if(!_pfPos.length){ banner.innerHTML=""; return; }
   const alertas=[];
 
+  // Deduplicar por ticker: si hay ARS y USD, quedar con la posición de peor PnL
+  const porTicker={};
   for(const p of _pfPos){
+    const tk=p.ticker;
+    const pnl=p.pnl_pct??0;
+    if(!porTicker[tk] || pnl < (porTicker[tk].pnl_pct??0)){
+      porTicker[tk]=p;
+    }
+  }
+  const posiciones=Object.values(porTicker);
+
+  for(const p of posiciones){
     const tk=p.ticker;
     // Cruzar con snapshot para señal del agente
     const snap=_pfSnaps.find(s=>s.ticker===tk)||snaps.find(s=>s.ticker===tk);
