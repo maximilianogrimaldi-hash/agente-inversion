@@ -78,6 +78,22 @@ def _enriquecer(sig, tipo: str) -> None:
         logger.debug(f"Enriquecimiento {sig.ticker}: {e}")
 
 
+def _debe_alertar(db: SupabaseClient, sig, dedup_minutes: int) -> bool:
+    """
+    FUERTE: se avisa siempre (una vez por ticker+señal en la ventana).
+    MODERADA: solo BUY/SELL y como máximo una por ticker en la ventana,
+    para que un ticker que oscila entre compra y venta no genere ruido.
+    DEBIL / WATCH / NEUTRAL: nunca.
+    """
+    if sig is None or sig.senal not in ("BUY", "SELL"):
+        return False
+    if sig.fuerza == "FUERTE":
+        return not db.alert_already_sent(sig.ticker, sig.senal, dedup_minutes)
+    if sig.fuerza == "MODERADA":
+        return not db.alert_already_sent(sig.ticker, None, dedup_minutes)
+    return False
+
+
 def run_cycle():
     logger.info("=== Iniciando ciclo de analisis ===")
     db = SupabaseClient()
@@ -105,10 +121,7 @@ def run_cycle():
                     if sig:
                         _enriquecer(sig, "CEDEAR")
                         db.save_snapshot(sig.__dict__)
-                    if sig and sig.senal not in ("NEUTRAL",) and sig.fuerza == "FUERTE":
-                        if db.alert_already_sent(ticker, sig.senal, dedup_minutes):
-                            logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")
-                            continue
+                    if _debe_alertar(db, sig, dedup_minutes):
                         db.save_alert(sig.__dict__)
                         signals_to_send.append(sig)
                 except Exception as e:
@@ -134,10 +147,7 @@ def run_cycle():
                     if sig:
                         _enriquecer(sig, "CRYPTO")
                         db.save_snapshot(sig.__dict__)
-                    if sig and sig.senal not in ("NEUTRAL",) and sig.fuerza == "FUERTE":
-                        if db.alert_already_sent(symbol, sig.senal, dedup_minutes):
-                            logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")
-                            continue
+                    if _debe_alertar(db, sig, dedup_minutes):
                         db.save_alert(sig.__dict__)
                         signals_to_send.append(sig)
                 except Exception as e:
@@ -154,38 +164,35 @@ def run_cycle():
     # Enviar señales técnicas
     telegram.send_signals_batch(signals_to_send)
 
-    # Noticias (cada ciclo, solo si hay señales o cada hora)
-    _run_news_check(telegram, cedears, cryptos)
-
     logger.info(f"=== Ciclo completado: {len(signals_to_send)} senales enviadas ===")
     return signals_to_send, current_prices
 
 
-def _run_news_check(telegram: TelegramBot, cedears: list, cryptos: list):
-    """Chequeo de noticias — solo informa si hay algo relevante."""
+def run_news():
+    """Noticias 1 vez por día — solo tickers con impacto ALTO y sentimiento marcado."""
+    logger.info("=== Chequeo diario de noticias ===")
+    db = SupabaseClient()
+    telegram = TelegramBot()
     try:
-        news_client = NewsClient()
-        news = news_client.get_watchlist_news(cedears, cryptos, max_per_ticker=2)
-
+        news = NewsClient().get_watchlist_news(db.get_cedears(), db.get_cryptos(), max_per_ticker=2)
         if not news:
+            logger.info("Noticias: nada para analizar")
             return
 
-        # Análisis de sentimiento (si hay API key)
-        sentiment_data = {}
-        try:
-            sa = SentimentAnalyzer()
-            sentiment_data = sa.analyze_news_batch(news)
-        except Exception as e:
-            logger.debug(f"Sentiment skip: {e}")
+        sentiment_data = SentimentAnalyzer().analyze_news_batch(news)
+        relevantes = {
+            t for t, d in (sentiment_data.get("tickers") or {}).items()
+            if d.get("impacto") == "ALTO" and d.get("sentiment") in ("POSITIVO", "NEGATIVO")
+        }
+        if not relevantes:
+            logger.info("Noticias: sin impacto alto, no se envía mensaje")
+            return
 
-        # Solo enviar si el sentimiento es muy marcado (no spam rutinario)
-        sentimiento = sentiment_data.get("sentimiento_mercado", "")
-        intensidad = sentiment_data.get("intensidad", "")
-        if sentimiento in ("POSITIVO", "NEGATIVO") and intensidad in ("ALTA", "MUY_ALTA"):
-            telegram.send_news_alert(news[:5], sentiment_data)
-
+        destacadas = [n for n in news if n.get("ticker") in relevantes]
+        telegram.send_news_alert(destacadas[:8], sentiment_data)
+        logger.info(f"Noticias: enviadas {len(destacadas)} de {sorted(relevantes)}")
     except Exception as e:
-        logger.error(f"Error en news check: {e}")
+        logger.error(f"Error en noticias: {e}")
 
 
 def run_heartbeat():
@@ -224,8 +231,8 @@ def run_heartbeat():
     recent_signals.sort(key=lambda s: fuerza_order.get(s.fuerza, 3))
     for sig in recent_signals[:10]:
         emoji_map = {
-            ("COMPRA", "FUERTE"): "🟢🔥", ("COMPRA", "MODERADA"): "🟢",
-            ("VENTA", "FUERTE"): "🔴🔥", ("VENTA", "MODERADA"): "🔴",
+            ("BUY", "FUERTE"): "🟢🔥", ("BUY", "MODERADA"): "🟢",
+            ("SELL", "FUERTE"): "🔴🔥", ("SELL", "MODERADA"): "🔴",
         }
         emoji = emoji_map.get((sig.senal, sig.fuerza), "🔔")
         lines.append(f"  {emoji} <b>{sig.ticker}</b>: {sig.senal} {sig.fuerza}")

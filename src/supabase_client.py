@@ -156,15 +156,18 @@ class SupabaseClient:
         }
         return self._post("alertas", payload)
 
-    def alert_already_sent(self, ticker: str, senal: str, within_minutes: int = 60) -> bool:
+    def alert_already_sent(self, ticker: str, senal: str | None, within_minutes: int = 60) -> bool:
+        """senal=None: cualquier alerta del ticker cuenta como ya enviada."""
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=within_minutes)).isoformat()
-        rows = self._get("alertas", {
+        params = {
             "ticker": f"eq.{ticker}",
-            "senal": f"eq.{senal}",
             "creado_en": f"gte.{cutoff}",
             "select": "id",
             "limit": "1",
-        })
+        }
+        if senal:
+            params["senal"] = f"eq.{senal}"
+        rows = self._get("alertas", params)
         return len(rows) > 0
 
     def get_recent_alerts(self, days_back: int = 30) -> list[dict]:

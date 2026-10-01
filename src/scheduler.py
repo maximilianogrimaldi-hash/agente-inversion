@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import schedule
 
-from main import run_cycle, run_heartbeat, run_screener, run_backtesting, run_portfolio
+from main import run_cycle, run_heartbeat, run_news, run_screener, run_backtesting, run_portfolio
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,6 +71,9 @@ def main():
 
     # Resumen diario completo (Fear&Greed + dólar + noticias + SEC filings)
     schedule.every().day.at("09:00").do(safe(run_heartbeat, "heartbeat"))
+
+    # Noticias de impacto alto (diario, 12:00 UTC = 09:00 ARG, antes de la apertura)
+    schedule.every().day.at("12:00").do(safe(run_news, "noticias"))
 
     # Portfolio P&L (diario, después del resumen)
     schedule.every().day.at("09:30").do(safe(run_portfolio, "portfolio"))
