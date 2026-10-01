@@ -82,7 +82,7 @@ def run_cycle():
     logger.info("=== Iniciando ciclo de analisis ===")
     db = SupabaseClient()
     config = _load_config(db)
-    dedup_minutes = int(config.get("dedup_minutes", 60))
+    dedup_minutes = int(config.get("dedup_minutes", 1440))  # default: 1 alerta x ticker x día
     analyzer = Analyzer(config)
     telegram = TelegramBot()
     signals_to_send: list[Signal] = []
@@ -105,7 +105,7 @@ def run_cycle():
                     if sig:
                         _enriquecer(sig, "CEDEAR")
                         db.save_snapshot(sig.__dict__)
-                    if sig and sig.senal not in ("NEUTRAL",):
+                    if sig and sig.senal not in ("NEUTRAL",) and sig.fuerza == "FUERTE":
                         if db.alert_already_sent(ticker, sig.senal, dedup_minutes):
                             logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")
                             continue
@@ -134,7 +134,7 @@ def run_cycle():
                     if sig:
                         _enriquecer(sig, "CRYPTO")
                         db.save_snapshot(sig.__dict__)
-                    if sig and sig.senal not in ("NEUTRAL",):
+                    if sig and sig.senal not in ("NEUTRAL",) and sig.fuerza == "FUERTE":
                         if db.alert_already_sent(symbol, sig.senal, dedup_minutes):
                             logger.info(f"Duplicado ignorado: {sig.ticker} {sig.senal}")
                             continue
@@ -178,11 +178,10 @@ def _run_news_check(telegram: TelegramBot, cedears: list, cryptos: list):
         except Exception as e:
             logger.debug(f"Sentiment skip: {e}")
 
-        # Solo enviar si hay noticias con sentimiento negativo fuerte o positivo fuerte
-        if sentiment_data.get("sentimiento_mercado") in ("POSITIVO", "NEGATIVO"):
-            telegram.send_news_alert(news, sentiment_data)
-        elif len(news) >= 3:
-            # De todas formas, cada hora aprox enviar algunas noticias
+        # Solo enviar si el sentimiento es muy marcado (no spam rutinario)
+        sentimiento = sentiment_data.get("sentimiento_mercado", "")
+        intensidad = sentiment_data.get("intensidad", "")
+        if sentimiento in ("POSITIVO", "NEGATIVO") and intensidad in ("ALTA", "MUY_ALTA"):
             telegram.send_news_alert(news[:5], sentiment_data)
 
     except Exception as e:
