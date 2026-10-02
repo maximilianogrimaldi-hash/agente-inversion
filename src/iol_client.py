@@ -113,6 +113,26 @@ class IOLClient:
                 logger.error(f"Error obteniendo CEDEAR {ticker}: {e}")
         return results
 
+    def get_mep(self, bono: str = "AL30") -> Optional[float]:
+        """
+        Dólar MEP implícito: precio del bono en pesos / precio en dólares (especie D).
+        Sirve para pasar a USD los CEDEARs, que IOL cotiza en pesos.
+        """
+        try:
+            ars = float(self.get_cedear_quote(bono).get("ultimoPrecio") or 0)
+            usd = float(self.get_cedear_quote(f"{bono}D").get("ultimoPrecio") or 0)
+        except Exception as e:
+            logger.warning(f"MEP no disponible ({bono}): {e}")
+            return None
+        if ars <= 0 or usd <= 0:
+            return None
+        mep = ars / usd
+        # Un valor fuera de rango indica una cotización rota, no un tipo de cambio
+        if not 100 < mep < 100000:
+            logger.warning(f"MEP descartado por fuera de rango: {mep}")
+            return None
+        return round(mep, 2)
+
     def get_portfolio(self) -> dict:
         url = f"{API_V2_URL}/portafolio/argentina"
         resp = requests.get(url, headers=self._headers(), timeout=10)

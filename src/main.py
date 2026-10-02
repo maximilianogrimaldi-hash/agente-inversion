@@ -310,6 +310,8 @@ def run_portfolio():
         for pos in positions:
             ticker = pos.get("ticker", "")
             tipo = pos.get("tipo", "CEDEAR")
+            if ticker in current_prices:
+                continue
             try:
                 if tipo == "CRYPTO":
                     td = binance.get_ticker_24h(ticker)
@@ -320,8 +322,10 @@ def run_portfolio():
             except Exception as e:
                 logger.warning(f"Precio no disponible para {ticker}: {e}")
 
-        pnl_data = tracker.calculate_pnl(positions, current_prices)
-        msg = tracker.format_portfolio_message(pnl_data)
+        # IOL cotiza en pesos: el MEP permite valuar las posiciones cargadas en USD
+        mep = iol.get_mep()
+        pnl_data = tracker.calculate_pnl(positions, current_prices, mep=mep, una_por_ticker=True)
+        msg = tracker.format_portfolio_message(pnl_data, mep=mep)
         telegram.send_portfolio(msg)
 
     except Exception as e:
